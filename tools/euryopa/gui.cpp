@@ -11,6 +11,8 @@ static bool showTimeWeatherWindow;
 static bool showViewWindow;
 static bool showRenderingWindow;
 
+static float dragSpeed = 0.1f;
+
 // From the demo, slightly changed
 struct ExampleAppLog
 {
@@ -80,21 +82,29 @@ uiMainmenu(void)
 {
 	if(ImGui::BeginMainMenuBar()){
 		if(ImGui::BeginMenu("File")){
+			if (!gameLoaded){
+				if (ImGui::MenuItem("Load")) LoadGame();
+			}
+			else{
+				if (ImGui::MenuItem("Save")) SaveGame();
+			}
+
 			if(ImGui::MenuItem("Exit", "Alt+F4")) sk::globals.quit = 1;
 			ImGui::EndMenu();
 		}
-		if(ImGui::BeginMenu("Window")){
-			if(ImGui::MenuItem("Time & Weather", "T", showTimeWeatherWindow)) { showTimeWeatherWindow ^= 1; }
-			if(ImGui::MenuItem("View", "V", showViewWindow)) { showViewWindow ^= 1; }
-			if(ImGui::MenuItem("Rendering", "R", showRenderingWindow)) { showRenderingWindow ^= 1; }
-			if(ImGui::MenuItem("Object Info", "I", showInstanceWindow)) { showInstanceWindow ^= 1; }
-			if(ImGui::MenuItem("Editor ", nil, showEditorWindow)) { showEditorWindow ^= 1; }
-			if(ImGui::MenuItem("Log ", nil, showLogWindow)) { showLogWindow ^= 1; }
-			if(ImGui::MenuItem("Demo ", nil, showDemoWindow)) { showDemoWindow ^= 1; }
-			if(ImGui::MenuItem("Help", nil, showHelpWindow)) { showHelpWindow ^= 1; }
-			ImGui::EndMenu();
+		if (gameLoaded){
+			if(ImGui::BeginMenu("Window")){
+				if(ImGui::MenuItem("Time & Weather", "T", showTimeWeatherWindow)) { showTimeWeatherWindow ^= 1; }
+				if(ImGui::MenuItem("View", "V", showViewWindow)) { showViewWindow ^= 1; }
+				if(ImGui::MenuItem("Rendering", "R", showRenderingWindow)) { showRenderingWindow ^= 1; }
+				if(ImGui::MenuItem("Object Info", "I", showInstanceWindow)) { showInstanceWindow ^= 1; }
+				if(ImGui::MenuItem("Editor ", nil, showEditorWindow)) { showEditorWindow ^= 1; }
+				if(ImGui::MenuItem("Log ", nil, showLogWindow)) { showLogWindow ^= 1; }
+				if(ImGui::MenuItem("Demo ", nil, showDemoWindow)) { showDemoWindow ^= 1; }
+				if(ImGui::MenuItem("Help", nil, showHelpWindow)) { showHelpWindow ^= 1; }
+				ImGui::EndMenu();
+			}
 		}
-
 		if(params.numAreas){
 			ImGui::PushItemWidth(100);
 			if(ImGui::BeginCombo("Area", params.areaNames[currentArea])){
@@ -373,15 +383,42 @@ uiInstInfo(ObjectInst *inst)
 
 	ImGui::Text("IPL: %s", inst->m_file->name);
 
-	ImGui::Text("Translation: %.3f %.3f %.3f",
-		inst->m_translation.x,
-		inst->m_translation.y,
-		inst->m_translation.z);
-	ImGui::Text("Rotation: %.3f %.3f %.3f %.3f",
-		inst->m_rotation.x,
-		inst->m_rotation.y,
-		inst->m_rotation.x,
-		inst->m_rotation.w);
+	ImGui::Spacing();
+	ImGui::DragFloat("pos x", &inst->m_translation.x, dragSpeed);
+	ImGui::DragFloat("pos y", &inst->m_translation.y, dragSpeed);
+	ImGui::DragFloat("pos z", &inst->m_translation.z, dragSpeed);
+
+	if (gameversion != GAME_SA) {
+		ImGui::Spacing();
+		ImGui::DragFloat("scale x", &inst->m_scale.x, dragSpeed);
+		ImGui::DragFloat("scale y", &inst->m_scale.y, dragSpeed);
+		ImGui::DragFloat("scale z", &inst->m_scale.z, dragSpeed);
+	}
+
+	ImGui::Spacing();
+	ImGui::DragFloat("rot x", &inst->m_rotation.x, dragSpeed);
+	ImGui::DragFloat("rot y", &inst->m_rotation.y, dragSpeed);
+	ImGui::DragFloat("rot z", &inst->m_rotation.z, dragSpeed);
+	ImGui::DragFloat("rot w", &inst->m_rotation.w, dragSpeed);
+
+	ImGui::Spacing();
+	if (ImGui::Button("Reset to default")){
+		inst->m_translation = inst->m_prevTranslation;
+		inst->m_rotation = inst->m_prevRotation;
+		inst->m_scale = inst->m_prevScale;
+	}
+
+	inst->UpdateMatrix();
+
+	//ImGui::Text("Translation: %.3f %.3f %.3f",
+	//	inst->m_translation.x,
+	//	inst->m_translation.y,
+	//	inst->m_translation.z);
+	//ImGui::Text("Rotation: %.3f %.3f %.3f %.3f",
+	//	inst->m_rotation.x,
+	//	inst->m_rotation.y,
+	//	inst->m_rotation.x,
+	//	inst->m_rotation.w);
 	if(params.numAreas)
 		ImGui::Text("Area: %d", inst->m_area);
 
@@ -516,6 +553,11 @@ uiEditorWindow(void)
 
 	ImGui::Begin("Editor Window", &showEditorWindow);
 
+	if (ImGui::TreeNode("Editor")) {
+		ImGui::InputFloat("Drag speed", &dragSpeed);
+		ImGui::TreePop();
+	}
+
 	if(ImGui::TreeNode("Camera")){
 		ImGui::InputFloat3("Cam position", (float*)&TheCamera.m_position);
 		ImGui::InputFloat3("Cam target", (float*)&TheCamera.m_target);
@@ -588,13 +630,23 @@ uiEditorWindow(void)
 static void
 uiInstWindow(void)
 {
-	ImGui::Begin("Object Info", &showInstanceWindow);
+	ImGuiContext& g = *GImGui;
+	float y = g.FontBaseSize + g.Style.FramePadding.y * 2.0f;	// height of main menu
+
+	ImGui::SetNextWindowPos({ (float)sk::globals.width, y }, 0, { 1, 0 });
+	ImGui::SetNextWindowSize({ 320, (float)sk::globals.height });
+	ImGui::Begin("Object Info", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+	ImGui::Text("Object Info:");
+
 	if(selection.first){
 		ObjectInst *inst = (ObjectInst*)selection.first->item;
-		if(ImGui::CollapsingHeader("Instance"))
+		if(ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
 			uiInstInfo(inst);
-		if(ImGui::CollapsingHeader("Object"))
+		if(ImGui::CollapsingHeader("Object", ImGuiTreeNodeFlags_DefaultOpen))
 			uiObjInfo(GetObjectDef(inst->m_objectId));
+	}
+	else{
+		ImGui::TextDisabled("No object selected");
 	}
 	ImGui::End();
 }
@@ -653,8 +705,8 @@ gui(void)
 		ImGui::End();
 	}
 
-	if(CPad::IsKeyJustDown('I')) showInstanceWindow ^= 1;
-	if(showInstanceWindow) uiInstWindow();
+	//if(CPad::IsKeyJustDown('I')) showInstanceWindow ^= 1;
+	uiInstWindow();
 
 	if(showEditorWindow) uiEditorWindow();
 	if(showHelpWindow) uiHelpWindow();

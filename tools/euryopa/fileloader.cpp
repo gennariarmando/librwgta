@@ -246,13 +246,13 @@ LoadObjectInstance(char *line)
 		n = sscanf(line, "%d %s %f  %f %f %f  %f %f %f  %f %f %f %f",
 		       &fi.objectId, model, &areaf,
 		       &fi.position.x, &fi.position.y, &fi.position.z,
-		       &sx, &sy, &sz,
+		       &fi.scale.x, &fi.scale.y, &fi.scale.z,
 		       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w);
 		if(n != 13){
 			sscanf(line, "%d %s  %f %f %f  %f %f %f  %f %f %f %f",
 			       &fi.objectId, model,
 			       &fi.position.x, &fi.position.y, &fi.position.z,
-			       &sx, &sy, &sz,
+			       &fi.scale.x, &fi.scale.y, &fi.scale.z,
 			       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w);
 			areaf = 0.0f;
 		}

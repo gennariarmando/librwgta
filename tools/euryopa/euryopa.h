@@ -169,6 +169,8 @@ inline bool isIII(void) { return gameversion == GAME_III; }
 inline bool isVC(void) { return gameversion == GAME_VC; }
 inline bool isSA(void) { return gameversion == GAME_SA; }
 
+extern bool gameLoaded;
+
 struct WeatherInfo;
 
 struct Params
@@ -255,6 +257,7 @@ GameFile *NewGameFile(char *path);
 
 bool IsHourInRange(int h1, int h2);
 void FindVersion(void);
+void SaveGame(void);
 void LoadGame(void);
 void Idle(void);
 void DefinedState(void);
@@ -394,6 +397,7 @@ ObjectDef *GetObjectDef(const char *name, int *id);
 struct FileObjectInstance
 {
 	rw::V3d position;
+	rw::V3d scale;
 	rw::Quat rotation;
 	int objectId;
 	int area;
@@ -403,7 +407,13 @@ struct FileObjectInstance
 struct ObjectInst
 {
 	rw::V3d m_translation;
+	rw::V3d m_prevTranslation;
+
+	rw::V3d m_scale;
+	rw::V3d m_prevScale;
+
 	rw::Quat m_rotation;
+	rw::Quat m_prevRotation;
 	// cached form of the above
 	rw::Matrix m_matrix;
 	int m_objectId;

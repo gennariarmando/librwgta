@@ -7,6 +7,7 @@ void
 ObjectInst::UpdateMatrix(void)
 {
 	m_matrix.rotate(conj(m_rotation), rw::COMBINEREPLACE);
+	m_matrix.scale(&m_scale, rw::COMBINEPOSTCONCAT);
 	m_matrix.translate(&m_translation, rw::COMBINEPOSTCONCAT);
 }
 
@@ -47,7 +48,14 @@ ObjectInst::Init(FileObjectInstance *fi)
 	if(fi->area & 0x1000) m_isTunnelTransition = true;
 	m_area = fi->area & 0xFF;
 	m_rotation = fi->rotation;
+	m_prevRotation = fi->rotation;
+
 	m_translation = fi->position;
+	m_prevTranslation = fi->position;
+
+	m_scale = fi->scale;
+	m_prevScale = fi->scale;
+
 	m_lodId = fi->lod;
 	UpdateMatrix();
 }

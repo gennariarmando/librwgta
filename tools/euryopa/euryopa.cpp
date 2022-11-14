@@ -3,6 +3,8 @@
 int gameversion;
 int gameplatform;
 
+bool gameLoaded = false;
+
 Params params;
 
 int gameTxdSlot;
@@ -400,6 +402,12 @@ fallbackFindCB(const char *name)
 }
 
 void
+SaveGame(void)
+{
+
+}
+
+void
 LoadGame(void)
 {
 // for debugging...
@@ -414,7 +422,8 @@ LoadGame(void)
 	case GAME_SA: debug("found SA!\n"); break;
 	case GAME_LCS: debug("found LCS!\n"); break;
 	case GAME_VCS: debug("found VCS!\n"); break;
-	default: panic("unknown game");
+	default: //panic("unknown game");
+		return;
 	}
 	switch(gameplatform){
 	case PLATFORM_PS2: debug("assuming PS2\n"); break;
@@ -491,6 +500,8 @@ LoadGame(void)
 		obj = GetObjectDef("IslandLODbeach", nil);
 		if(obj) obj->m_isHidden = true;
 	}
+
+	gameLoaded = true;
 }
 
 void
@@ -502,10 +513,12 @@ dogizmo(void)
 	float *fview, *fproj, *fobj;
 	static rw::RawMatrix gizobj;
 	static bool first = true;
+
+	ObjectInst* inst = (ObjectInst*)selection.first->item;
+
 	if(first){
 		tmp.setIdentity();
 		convMatrix(&gizobj, &tmp);
-		gizobj.pos = TheCamera.m_target;
 		first = false;
 	}
 
@@ -518,7 +531,11 @@ dogizmo(void)
 
 	ImGuiIO &io = ImGui::GetIO();
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-	ImGuizmo::Manipulate(fview, fproj, ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, fobj, nil, nil);
+	if (!ImGuizmo::Manipulate(fview, fproj, ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, fobj, nil, nil))
+		gizobj.pos = inst->m_translation;
+	else
+		inst->m_translation = gizobj.pos;
+
 //	ImGuizmo::DrawCube(fview, fproj, fobj);
 //	ImGuizmo::DrawCube((float*)&gizview, (float*)&cam->devProj, (float*)&gizobj);
 }
@@ -564,11 +581,13 @@ Draw(void)
 	ImGui_ImplRW_NewFrame(timeStep);
 	ImGuizmo::BeginFrame();
 
-	Weather::Update();
-	Timecycle::Update();
-	Timecycle::SetLights();
+	if (gameLoaded) {
+		Weather::Update();
+		Timecycle::Update();
+		Timecycle::SetLights();
 
-	UpdateDayNightBalance();
+		UpdateDayNightBalance();
+	}
 
 	TheCamera.m_rwcam->setFarPlane(Timecycle::currentColours.farClp);
 	TheCamera.m_rwcam->fogPlane = Timecycle::currentColours.fogSt;
@@ -586,47 +605,56 @@ Draw(void)
 
 	DefinedState();
 
-	LoadAllRequestedObjects();
-	BuildRenderList();
+	if (gameLoaded) {
+		LoadAllRequestedObjects();
+		BuildRenderList();
 
-	// Has to be called for highlighting some objects
-	// but also can mess with timecycle mid frame :/
+
+		// Has to be called for highlighting some objects
+		// but also can mess with timecycle mid frame :/
+
+		if (selection.first)
+			dogizmo();
+
+		handleTool();
+	}
 	gui();
-
-//	dogizmo();
-
-	handleTool();
 
 	DefinedState();
 	Scene.camera->clear(&clearcol, rw::Camera::CLEARIMAGE|rw::Camera::CLEARZ);
-	if(gRenderBackground){
-		SetRenderState(rw::ALPHATESTREF, 0);
-		SetRenderState(rw::CULLMODE, rw::CULLNONE);
-		rw::RGBA skytop, skybot;
-		rw::convColor(&skytop, &Timecycle::currentColours.skyTop);
-		rw::convColor(&skybot, &Timecycle::currentColours.skyBottom);
-		if(params.background == GAME_SA){
-			Clouds::RenderSkyPolys();
-			Clouds::RenderLowClouds();
-		}else{
-			Clouds::RenderBackground(skytop.red, skytop.green, skytop.blue,
-				skybot.red, skybot.green, skybot.blue, 255);
-			Clouds::RenderLowClouds();
-			if(params.timecycle != GAME_VCS)
-				Clouds::RenderFluffyClouds();
-			Clouds::RenderHorizon();
+
+	if (gameLoaded) {
+		if (gRenderBackground) {
+			SetRenderState(rw::ALPHATESTREF, 0);
+			SetRenderState(rw::CULLMODE, rw::CULLNONE);
+			rw::RGBA skytop, skybot;
+			rw::convColor(&skytop, &Timecycle::currentColours.skyTop);
+			rw::convColor(&skybot, &Timecycle::currentColours.skyBottom);
+			if (params.background == GAME_SA) {
+				Clouds::RenderSkyPolys();
+				Clouds::RenderLowClouds();
+			}
+			else {
+				Clouds::RenderBackground(skytop.red, skytop.green, skytop.blue,
+					skybot.red, skybot.green, skybot.blue, 255);
+				Clouds::RenderLowClouds();
+				if (params.timecycle != GAME_VCS)
+					Clouds::RenderFluffyClouds();
+				Clouds::RenderHorizon();
+			}
+			SetRenderState(rw::ALPHATESTREF, params.alphaRef);
 		}
-		SetRenderState(rw::ALPHATESTREF, params.alphaRef);
 	}
-
 	rw::SetRenderState(rw::FOGENABLE, gEnableFog);
-	RenderOpaque();
-	if(gRenderWater)
-		WaterLevel::Render();
-	RenderTransparent();
-	// DEBUG render object picking
-	//RenderEverythingColourCoded();
 
+	if (gameLoaded) {
+		RenderOpaque();
+		if (gRenderWater)
+			WaterLevel::Render();
+		RenderTransparent();
+		// DEBUG render object picking
+		//RenderEverythingColourCoded();
+	}
 
 	if(gRenderPostFX)
 		RenderPostFX();
@@ -664,14 +692,5 @@ Draw(void)
 void
 Idle(void)
 {
-	static int state = 0;
-	switch(state){
-	case 0:
-		LoadGame();
-		state = 1;
-		break;
-	case 1:
-		Draw();
-		break;
-	}
+	Draw();
 }

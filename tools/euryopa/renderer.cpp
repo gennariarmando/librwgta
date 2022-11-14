@@ -389,11 +389,18 @@ RenderInst(ObjectInst *inst)
 		inst->m_highlight = HIGHLIGHT_SELECTION;
 	highlightColor = highlightCols[inst->m_highlight];
 
-	if(obj->m_type == ObjectDef::ATOMIC)
-		((rw::Atomic*)inst->m_rwObject)->render();
-	else if(obj->m_type == ObjectDef::CLUMP)
-		((rw::Clump*)inst->m_rwObject)->render();
+	if (obj->m_type == ObjectDef::ATOMIC) {
+		((rw::Atomic*)inst->m_rwObject)->getFrame()->matrix = inst->m_matrix;
 
+		((rw::Atomic*)inst->m_rwObject)->getFrame()->updateObjects();
+		((rw::Atomic*)inst->m_rwObject)->render();
+	}
+	else if (obj->m_type == ObjectDef::CLUMP) {
+		((rw::Clump*)inst->m_rwObject)->getFrame()->matrix = inst->m_matrix;
+
+		((rw::Clump*)inst->m_rwObject)->getFrame()->updateObjects();
+		((rw::Clump*)inst->m_rwObject)->render();
+	}
 	highlightColor = black;
 	if(obj->m_noBackfaceCulling)
 		SetRenderState(rw::CULLMODE, cull);
@@ -558,7 +565,7 @@ RenderTransparent(void)
 	CLink<InstDist> *node;
 	SetRenderState(rw::CULLMODE, gDoBackfaceCulling ? rw::CULLBACK : rw::CULLNONE);
 	for(node = sortedInstList.tail.prev;
-	    node != &sortedInstList.head;
+	    node && node != &sortedInstList.head;
 	    node = node->prev){
 		ObjectInst *inst = node->item.inst;
 		RenderTransparentInst(inst);
