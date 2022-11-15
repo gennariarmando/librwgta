@@ -406,6 +406,10 @@ struct FileObjectInstance
 
 struct ObjectInst
 {
+	int lineIndex;
+	bool altered;
+	char modelName[MODELNAMELEN];
+
 	rw::V3d m_translation;
 	rw::V3d m_prevTranslation;
 
@@ -511,9 +515,10 @@ struct DatDesc
 	static void *get(DatDesc *desc, const char *name);
 };
 
-char *LoadLine(FILE *f);
+char *LoadLine(FILE *f, bool spc = false);
 void LoadLevel(const char *filename);
 rw::TexDictionary *LoadTexDictionary(const char *path);
+void SaveDataFiles();
 }
 
 // Rendering

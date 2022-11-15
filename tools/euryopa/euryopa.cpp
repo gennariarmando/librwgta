@@ -404,7 +404,7 @@ fallbackFindCB(const char *name)
 void
 SaveGame(void)
 {
-
+	FileLoader::SaveDataFiles();
 }
 
 void
@@ -533,9 +533,10 @@ dogizmo(void)
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
 	if (!ImGuizmo::Manipulate(fview, fproj, ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, fobj, nil, nil))
 		gizobj.pos = inst->m_translation;
-	else
+	else {
 		inst->m_translation = gizobj.pos;
-
+		inst->altered = true;
+	}
 //	ImGuizmo::DrawCube(fview, fproj, fobj);
 //	ImGuizmo::DrawCube((float*)&gizview, (float*)&cam->devProj, (float*)&gizobj);
 }

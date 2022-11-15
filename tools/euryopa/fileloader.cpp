@@ -30,7 +30,7 @@ skipWhite(char *s)
 }
 
 char*
-LoadLine(FILE *f)
+LoadLine(FILE *f, bool spc)
 {
 	static char linebuf[1024];
 again:
@@ -44,14 +44,78 @@ again:
 	while(c = s[--end], isspace(c))
 		s[end] = '\0';
 	// convert ',' -> ' '
-	for(char *t = s; *t; t++)
-		if(*t == ',') *t = ' ';
+	if (!spc) {
+		for (char* t = s; *t; t++)
+			if (*t == ',') *t = ' ';
+	}
 	// don't return empty lines
 	if(*s == '\0')
 		goto again;
 	return s;
 }
 
+void
+SaveDataFiles()
+{
+	for (CPtrNode* p = instances.first; p; p = p->next) {
+		ObjectInst* inst = (ObjectInst*)p->item;
+		if (!inst->altered)
+			continue;
+
+		FILE* file;
+		FILE* fileTemp;
+
+		char* line;
+		int lineNum = 1;
+		int n;
+		int count;
+		char tempFileName[MAX_PATH];
+		strcpy(tempFileName, inst->m_file->name);
+		strcat(tempFileName, ".tmp");
+		puts(tempFileName);
+
+		file = fopen_ci(inst->m_file->name, "r");
+		fileTemp = fopen_ci(tempFileName, "w");
+
+		if (file != nil && fileTemp != nil) {
+			count = 0;
+			while (line = LoadLine(file, true)) {
+				count++;
+
+				if (count == inst->lineIndex) {
+					if (isSA()) {
+						fprintf(fileTemp, "%d, %s, %d, %f, %f, %f, %f, %f, %f, %f, %d \n",
+							inst->m_objectId, inst->modelName, inst->m_area,
+							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
+							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w,
+							inst->m_lod);
+					}
+					else {
+						n = fprintf(fileTemp, "%d, %s, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f \n",
+							inst->m_objectId, inst->modelName,
+							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
+							inst->m_scale.x, inst->m_scale.y, inst->m_scale.z,
+							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w);
+					}
+				}
+				else {
+					fprintf(fileTemp, line);
+					fprintf(fileTemp, "\n");
+				}
+			}
+
+			fclose(file);
+			fclose(fileTemp);
+
+			remove(inst->m_file->name);
+			rename(tempFileName, inst->m_file->name);
+		}
+	}
+
+	debug("Saving data files.\n");
+}
+
+static int numInstLine = 0;
 
 void
 LoadDataFile(const char *filename, DatDesc *desc)
@@ -60,9 +124,13 @@ LoadDataFile(const char *filename, DatDesc *desc)
 	char *line;
 	void (*handler)(char*) = nil;
 
+	numInstLine = 0;
+
 	if(file = fopen_ci(filename, "rb"), file == nil)
 		return;
 	while(line = LoadLine(file)){
+		numInstLine++;
+
 		if(line[0] == '#')
 			continue;
 		void *tmp = DatDesc::get(desc, line);
@@ -233,7 +301,6 @@ LoadObjectInstance(char *line)
 
 	char model[MODELNAMELEN];
 	float areaf;
-	float sx, sy, sz;
 	int n;
 
 	if(isSA()){
@@ -242,6 +309,8 @@ LoadObjectInstance(char *line)
 		       &fi.position.x, &fi.position.y, &fi.position.z,
 		       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w,
 		       &fi.lod);
+
+		fi.scale = { 1.0f, 1.0f, 1.0f };
 	}else{
 		n = sscanf(line, "%d %s %f  %f %f %f  %f %f %f  %f %f %f %f",
 		       &fi.objectId, model, &areaf,
@@ -277,6 +346,8 @@ LoadObjectInstance(char *line)
 		tmpInsts[numTmpInsts++] = inst;
 
 	inst->m_file = currentFile;
+	inst->lineIndex = numInstLine;
+	strcpy(inst->modelName, model);
 }
 
 void

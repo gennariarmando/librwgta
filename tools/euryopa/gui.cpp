@@ -12,6 +12,7 @@ static bool showViewWindow;
 static bool showRenderingWindow;
 
 static float dragSpeed = 0.1f;
+static bool showPreferences;
 
 // From the demo, slightly changed
 struct ExampleAppLog
@@ -92,6 +93,10 @@ uiMainmenu(void)
 			if(ImGui::MenuItem("Exit", "Alt+F4")) sk::globals.quit = 1;
 			ImGui::EndMenu();
 		}
+		if (ImGui::BeginMenu("Edit")) {
+			if (ImGui::MenuItem("Preferences")) { showPreferences ^= 1; }
+			ImGui::EndMenu();
+		}
 		if (gameLoaded){
 			if(ImGui::BeginMenu("Window")){
 				if(ImGui::MenuItem("Time & Weather", "T", showTimeWeatherWindow)) { showTimeWeatherWindow ^= 1; }
@@ -155,6 +160,19 @@ uiHelpWindow(void)
 		ImGui::ShowUserGuide();
 	}
 
+	ImGui::End();
+}
+
+static void
+uiPreferencesWindow(void)
+{
+	ImGuiContext& g = *GImGui;
+	float y = g.FontBaseSize + g.Style.FramePadding.y * 2.0f;
+
+	ImGui::SetNextWindowPos({ (float)sk::globals.width / 2, y + (float)sk::globals.height / 2 }, 0, { 0.5f, 0.5f });
+	ImGui::SetNextWindowSize({ 512, 256 });
+	ImGui::Begin("Preferences", &showPreferences, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+	
 	ImGui::End();
 }
 
@@ -382,24 +400,22 @@ uiInstInfo(ObjectInst *inst)
 	ImGui::InputText("Model", buf, MODELNAMELEN);
 
 	ImGui::Text("IPL: %s", inst->m_file->name);
+	ImGui::Text("Altered: %d", inst->altered);
+	ImGui::Text("Line index: %d", inst->lineIndex);
 
 	ImGui::Spacing();
-	ImGui::DragFloat("pos x", &inst->m_translation.x, dragSpeed);
-	ImGui::DragFloat("pos y", &inst->m_translation.y, dragSpeed);
-	ImGui::DragFloat("pos z", &inst->m_translation.z, dragSpeed);
+	bool altered = ImGui::DragFloat3("pos", (float*)&inst->m_translation, dragSpeed);
 
 	if (gameversion != GAME_SA) {
 		ImGui::Spacing();
-		ImGui::DragFloat("scale x", &inst->m_scale.x, dragSpeed);
-		ImGui::DragFloat("scale y", &inst->m_scale.y, dragSpeed);
-		ImGui::DragFloat("scale z", &inst->m_scale.z, dragSpeed);
+		altered |= ImGui::DragFloat3("scale", (float*)&inst->m_scale, dragSpeed);
 	}
 
 	ImGui::Spacing();
-	ImGui::DragFloat("rot x", &inst->m_rotation.x, dragSpeed);
-	ImGui::DragFloat("rot y", &inst->m_rotation.y, dragSpeed);
-	ImGui::DragFloat("rot z", &inst->m_rotation.z, dragSpeed);
-	ImGui::DragFloat("rot w", &inst->m_rotation.w, dragSpeed);
+	altered |= ImGui::DragFloat4("rot", (float*)&inst->m_rotation, dragSpeed);
+
+	if (altered)
+		inst->altered = true;
 
 	ImGui::Spacing();
 	if (ImGui::Button("Reset to default")){
@@ -635,9 +651,9 @@ uiInstWindow(void)
 
 	ImGui::SetNextWindowPos({ (float)sk::globals.width, y }, 0, { 1, 0 });
 	ImGui::SetNextWindowSize({ 320, (float)sk::globals.height });
-	ImGui::Begin("Object Info", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-	ImGui::Text("Object Info:");
+	ImGui::Begin("World", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_HorizontalScrollbar);
 
+	ImGui::BeginChild("Details", ImVec2(0, 0));
 	if(selection.first){
 		ObjectInst *inst = (ObjectInst*)selection.first->item;
 		if(ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
@@ -648,6 +664,7 @@ uiInstWindow(void)
 	else{
 		ImGui::TextDisabled("No object selected");
 	}
+	ImGui::EndChild();
 	ImGui::End();
 }
 
@@ -681,6 +698,10 @@ gui(void)
 	static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	uiMainmenu();
+
+	if (showPreferences){
+		uiPreferencesWindow();
+	}
 
 	if(CPad::IsKeyJustDown('C')) gUseViewerCam = !gUseViewerCam;
 
