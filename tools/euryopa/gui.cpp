@@ -12,7 +12,6 @@ static bool showViewWindow;
 static bool showRenderingWindow;
 
 static float dragSpeed = 0.1f;
-static bool showPreferences;
 
 // From the demo, slightly changed
 struct ExampleAppLog
@@ -93,10 +92,6 @@ uiMainmenu(void)
 			if(ImGui::MenuItem("Exit", "Alt+F4")) sk::globals.quit = 1;
 			ImGui::EndMenu();
 		}
-		if (ImGui::BeginMenu("Edit")) {
-			if (ImGui::MenuItem("Preferences")) { showPreferences ^= 1; }
-			ImGui::EndMenu();
-		}
 		if (gameLoaded){
 			if(ImGui::BeginMenu("Window")){
 				if(ImGui::MenuItem("Time & Weather", "T", showTimeWeatherWindow)) { showTimeWeatherWindow ^= 1; }
@@ -160,19 +155,6 @@ uiHelpWindow(void)
 		ImGui::ShowUserGuide();
 	}
 
-	ImGui::End();
-}
-
-static void
-uiPreferencesWindow(void)
-{
-	ImGuiContext& g = *GImGui;
-	float y = g.FontBaseSize + g.Style.FramePadding.y * 2.0f;
-
-	ImGui::SetNextWindowPos({ (float)sk::globals.width / 2, y + (float)sk::globals.height / 2 }, 0, { 0.5f, 0.5f });
-	ImGui::SetNextWindowSize({ 512, 256 });
-	ImGui::Begin("Preferences", &showPreferences, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-	
 	ImGui::End();
 }
 
@@ -400,8 +382,8 @@ uiInstInfo(ObjectInst *inst)
 	ImGui::InputText("Model", buf, MODELNAMELEN);
 
 	ImGui::Text("IPL: %s", inst->m_file->name);
-	ImGui::Text("Altered: %d", inst->altered);
-	ImGui::Text("Line index: %d", inst->lineIndex);
+	ImGui::Text("Altered: %d", inst->m_altered);
+	ImGui::Text("Line index: %d", inst->m_lineIndex);
 
 	ImGui::Spacing();
 	bool altered = ImGui::DragFloat3("pos", (float*)&inst->m_translation, dragSpeed);
@@ -415,7 +397,7 @@ uiInstInfo(ObjectInst *inst)
 	altered |= ImGui::DragFloat4("rot", (float*)&inst->m_rotation, dragSpeed);
 
 	if (altered)
-		inst->altered = true;
+		inst->m_altered = true;
 
 	ImGui::Spacing();
 	if (ImGui::Button("Reset to default")){
@@ -698,10 +680,6 @@ gui(void)
 	static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	uiMainmenu();
-
-	if (showPreferences){
-		uiPreferencesWindow();
-	}
 
 	if(CPad::IsKeyJustDown('C')) gUseViewerCam = !gUseViewerCam;
 

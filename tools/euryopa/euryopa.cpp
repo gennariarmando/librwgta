@@ -535,7 +535,7 @@ dogizmo(void)
 		gizobj.pos = inst->m_translation;
 	else {
 		inst->m_translation = gizobj.pos;
-		inst->altered = true;
+		inst->m_altered = true;
 	}
 //	ImGuizmo::DrawCube(fview, fproj, fobj);
 //	ImGuizmo::DrawCube((float*)&gizview, (float*)&cam->devProj, (float*)&gizobj);

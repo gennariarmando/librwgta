@@ -41,7 +41,7 @@ ObjectInst::CreateRwObject(void)
 void
 ObjectInst::Init(FileObjectInstance *fi)
 {
-	altered = false;
+	m_altered = false;
 	m_objectId = fi->objectId;
 	if(fi->area & 0x100) m_isUnimportant = true;
 	if(fi->area & 0x400) m_isUnderWater = true;

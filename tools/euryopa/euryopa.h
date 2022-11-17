@@ -406,9 +406,9 @@ struct FileObjectInstance
 
 struct ObjectInst
 {
-	int lineIndex;
-	bool altered;
-	char modelName[MODELNAMELEN];
+	int m_lineIndex;
+	bool m_altered;
+	char m_modelName[MODELNAMELEN];
 
 	rw::V3d m_translation;
 	rw::V3d m_prevTranslation;

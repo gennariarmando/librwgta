@@ -59,7 +59,7 @@ SaveDataFiles()
 {
 	for (CPtrNode* p = instances.first; p; p = p->next) {
 		ObjectInst* inst = (ObjectInst*)p->item;
-		if (!inst->altered)
+		if (!inst->m_altered)
 			continue;
 
 		FILE* file;
@@ -82,17 +82,17 @@ SaveDataFiles()
 			while (line = LoadLine(file, true)) {
 				count++;
 
-				if (count == inst->lineIndex) {
+				if (count == inst->m_lineIndex) {
 					if (isSA()) {
 						fprintf(fileTemp, "%d, %s, %d, %f, %f, %f, %f, %f, %f, %f, %d \n",
-							inst->m_objectId, inst->modelName, inst->m_area,
+							inst->m_objectId, inst->m_modelName, inst->m_area,
 							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
 							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w,
 							inst->m_lod);
 					}
 					else {
 						n = fprintf(fileTemp, "%d, %s, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f \n",
-							inst->m_objectId, inst->modelName,
+							inst->m_objectId, inst->m_modelName,
 							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
 							inst->m_scale.x, inst->m_scale.y, inst->m_scale.z,
 							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w);
@@ -111,8 +111,6 @@ SaveDataFiles()
 			rename(tempFileName, inst->m_file->name);
 		}
 	}
-
-	debug("Saving data files.\n");
 }
 
 static int numInstLine = 0;
@@ -346,8 +344,8 @@ LoadObjectInstance(char *line)
 		tmpInsts[numTmpInsts++] = inst;
 
 	inst->m_file = currentFile;
-	inst->lineIndex = numInstLine;
-	strcpy(inst->modelName, model);
+	inst->m_lineIndex = numInstLine;
+	strcpy(inst->m_modelName, model);
 }
 
 void
