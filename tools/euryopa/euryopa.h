@@ -397,7 +397,6 @@ ObjectDef *GetObjectDef(const char *name, int *id);
 struct FileObjectInstance
 {
 	rw::V3d position;
-	rw::V3d scale;
 	rw::Quat rotation;
 	int objectId;
 	int area;

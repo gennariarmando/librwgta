@@ -299,6 +299,7 @@ LoadObjectInstance(char *line)
 
 	char model[MODELNAMELEN];
 	float areaf;
+	float sx(1.0f), sy(1.0f), sz(1.0f);
 	int n;
 
 	if(isSA()){
@@ -307,19 +308,17 @@ LoadObjectInstance(char *line)
 		       &fi.position.x, &fi.position.y, &fi.position.z,
 		       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w,
 		       &fi.lod);
-
-		fi.scale = { 1.0f, 1.0f, 1.0f };
 	}else{
 		n = sscanf(line, "%d %s %f  %f %f %f  %f %f %f  %f %f %f %f",
 		       &fi.objectId, model, &areaf,
 		       &fi.position.x, &fi.position.y, &fi.position.z,
-		       &fi.scale.x, &fi.scale.y, &fi.scale.z,
+		       &sx, &sy, &sz,
 		       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w);
 		if(n != 13){
 			sscanf(line, "%d %s  %f %f %f  %f %f %f  %f %f %f %f",
 			       &fi.objectId, model,
 			       &fi.position.x, &fi.position.y, &fi.position.z,
-			       &fi.scale.x, &fi.scale.y, &fi.scale.z,
+				   &sx, &sy, &sz,
 			       &fi.rotation.x, &fi.rotation.y, &fi.rotation.z, &fi.rotation.w);
 			areaf = 0.0f;
 		}
@@ -336,6 +335,8 @@ LoadObjectInstance(char *line)
 
 	ObjectInst *inst = AddInstance();
 	inst->Init(&fi);
+	inst->m_scale = { sx, sy, sz };
+	inst->m_prevScale = { sx, sy, sz };
 
 	if(!isSA() && obj->m_isBigBuilding)
 		inst->SetupBigBuilding();

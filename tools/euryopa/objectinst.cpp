@@ -54,8 +54,8 @@ ObjectInst::Init(FileObjectInstance *fi)
 	m_translation = fi->position;
 	m_prevTranslation = fi->position;
 
-	m_scale = fi->scale;
-	m_prevScale = fi->scale;
+	m_scale = { 1.0f, 1.0f, 1.0f };
+	m_prevScale = { 1.0f, 1.0f, 1.0f };
 
 	m_lodId = fi->lod;
 	UpdateMatrix();
