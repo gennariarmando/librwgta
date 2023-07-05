@@ -119,10 +119,10 @@ AddDirEntry(CdImage *cdimg, DirEntry *de)
 		de->filetype = FILE_TXD;
 	else if(rw::strncmp_ci(ext, "col", 3) == 0){
 		de->filetype = FILE_COL;
-		de->file = NewGameFile(de->name);
+		de->file = NewGameFile("COL", de->name);
 	}else if(rw::strncmp_ci(ext, "ipl", 3) == 0){
 		de->filetype = FILE_IPL;
-		de->file = NewGameFile(de->name);
+		de->file = NewGameFile("IPL", de->name);
 	}else{
 //		log("warning: unknown file extension: %s %s\n", ext, de->name);
 		return;

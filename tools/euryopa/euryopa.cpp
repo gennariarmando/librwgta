@@ -411,9 +411,9 @@ void
 LoadGame(void)
 {
 // for debugging...
-//	SetCurrentDirectory("C:/Users/aap/games/gta3");
-//	SetCurrentDirectory("C:/Users/aap/games/gtavc");
-//	SetCurrentDirectory("C:/Users/aap/games/gtasa");
+	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto 3");
+	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto Vice City");
+	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto San Andreas");
 
 	FindVersion();
 	switch(gameversion){
@@ -535,7 +535,7 @@ dogizmo(void)
 		gizobj.pos = inst->m_translation;
 	else {
 		inst->m_translation = gizobj.pos;
-		inst->m_altered = true;
+		inst->m_file->m_altered = true;
 	}
 //	ImGuizmo::DrawCube(fview, fproj, fobj);
 //	ImGuizmo::DrawCube((float*)&gizview, (float*)&cam->devProj, (float*)&gizobj);
@@ -614,8 +614,20 @@ Draw(void)
 		// Has to be called for highlighting some objects
 		// but also can mess with timecycle mid frame :/
 
-		if (selection.first)
+		if (selection.first){
 			dogizmo();
+
+			if (CPad::IsKeyJustDown(KEY_DEL)) {
+				ObjectInst* inst = (ObjectInst*)selection.first->item;
+
+				if (inst) {
+					inst->Deselect();
+					inst->m_file->m_altered = true;
+					RemoveInstance(inst);
+				}
+			}
+
+		}
 
 		handleTool();
 	}

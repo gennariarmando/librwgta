@@ -5,6 +5,13 @@ public:
 
 	CPtrList(void) { first = nil; }
 	~CPtrList(void) { Flush(); }
+	CPtrNode* FindItem(void* item){
+		CPtrNode* node;
+		for (node = first; node; node = node->next)
+			if (node->item == item)
+				return node;
+		return nil;
+	}
 	CPtrNode *InsertNode(CPtrNode *node){
 		node->prev = nil;
 		node->next = first;
@@ -30,6 +37,14 @@ public:
 	void DeleteNode(CPtrNode *node){
 		RemoveNode(node);
 		delete node;
+	}
+	void RemoveItem(void* item){
+		CPtrNode* node, * next;
+		for (node = first; node; node = next){
+			next = node->next;
+			if (node->item == item)
+				DeleteNode(node);
+		}
 	}
 	void Flush(void){
 		CPtrNode *node, *next;

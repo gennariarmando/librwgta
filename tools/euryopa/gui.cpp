@@ -371,6 +371,67 @@ uiRendering(void)
 		ImGui::Checkbox("Enable TimeCycle boxes", &gEnableTimecycleBoxes);
 }
 
+ObjectInst*
+AddNewObjectInst(GameFile* file, int id) {
+	FileObjectInstance fi;
+	fi.position = TheCamera.m_position;
+	fi.position.x += TheCamera.m_at.x * 2.0f;
+	fi.position.y += TheCamera.m_at.y * 2.0f;
+	fi.position.z += TheCamera.m_at.z * 2.0f;
+
+
+	fi.rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+	fi.objectId = id;
+	fi.area = currentArea;
+	fi.lod = -1;
+
+	float sx(1.0f), sy(1.0f), sz(1.0f);
+
+	ObjectDef* obj = GetObjectDef(id);
+	if (obj == nil) {
+		log("warning: object %d was never defined\n", id);
+		return nil;
+	}
+
+	ObjectInst* inst = AddInstance();
+	inst->Init(&fi);
+	inst->m_scale = { sx, sy, sz };
+	inst->m_prevScale = { sx, sy, sz };
+
+	if (!isSA() && obj->m_isBigBuilding)
+		inst->SetupBigBuilding();
+
+	inst->m_file = file;
+	strcpy(inst->m_modelName, obj->m_name);
+
+	InsertInstIntoSectors(inst);
+	inst->m_file->m_altered = true;
+
+	return inst;
+}
+
+static void
+uiUpdateIDEObjList(ImVector<ObjectDef*>& objs, GameFile* file)
+{
+	for (int i = 0; i < NUMOBJECTDEFS; i++) {
+		ObjectDef* def = GetObjectDef(i);
+
+		if (def && def->m_file == file)
+			objs.push_back(def);
+	}
+}
+
+static void
+uiUpdateIPLObjList(ImVector<ObjectInst*>& objs, GameFile* file)
+{
+	for (CPtrNode* p = instances.first; p; p = p->next) {
+		ObjectInst* inst = (ObjectInst*)p->item;
+
+		if (inst && inst->m_file == file)
+			objs.push_back(inst);
+	}
+}
+
 static void
 uiInstInfo(ObjectInst *inst)
 {
@@ -381,9 +442,7 @@ uiInstInfo(ObjectInst *inst)
 	strncpy(buf, obj->m_name, MODELNAMELEN);
 	ImGui::InputText("Model", buf, MODELNAMELEN);
 
-	ImGui::Text("IPL: %s", inst->m_file->name);
-	ImGui::Text("Altered: %d", inst->m_altered);
-	ImGui::Text("Line index: %d", inst->m_lineIndex);
+	ImGui::Text("IPL: %s", inst->m_file->m_name);
 
 	ImGui::Spacing();
 	bool altered = ImGui::DragFloat3("pos", (float*)&inst->m_translation, dragSpeed);
@@ -397,7 +456,7 @@ uiInstInfo(ObjectInst *inst)
 	altered |= ImGui::DragFloat4("rot", (float*)&inst->m_rotation, dragSpeed);
 
 	if (altered)
-		inst->m_altered = true;
+		inst->m_file->m_altered = true;
 
 	ImGui::Spacing();
 	if (ImGui::Button("Reset to default")){
@@ -443,9 +502,9 @@ uiObjInfo(ObjectDef *obj)
 	strncpy(buf, txd->name, MODELNAMELEN);
 	ImGui::InputText("TXD", buf, MODELNAMELEN);
 
-	ImGui::Text("IDE: %s", obj->m_file->name);
+	ImGui::Text("IDE: %s", obj->m_file->m_name);
 	if(obj->m_colModel && !obj->m_gotChildCol)
-		ImGui::Text("COL: %s", obj->m_colModel->file->name);
+		ImGui::Text("COL: %s", obj->m_colModel->file->m_name);
 
 	ImGui::Text("Draw dist:");
 	for(i = 0; i < obj->m_numAtomics; i++){
@@ -630,24 +689,221 @@ uiInstWindow(void)
 {
 	ImGuiContext& g = *GImGui;
 	float y = g.FontBaseSize + g.Style.FramePadding.y * 2.0f;	// height of main menu
-
 	ImGui::SetNextWindowPos({ (float)sk::globals.width, y }, 0, { 1, 0 });
 	ImGui::SetNextWindowSize({ 320, (float)sk::globals.height });
-	ImGui::Begin("World", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_HorizontalScrollbar);
 
-	ImGui::BeginChild("Details", ImVec2(0, 0));
-	if(selection.first){
-		ObjectInst *inst = (ObjectInst*)selection.first->item;
-		if(ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
-			uiInstInfo(inst);
-		if(ImGui::CollapsingHeader("Object", ImGuiTreeNodeFlags_DefaultOpen))
-			uiObjInfo(GetObjectDef(inst->m_objectId));
+	if (gameLoaded && ImGui::Begin("World", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_HorizontalScrollbar)) {
+		if (ImGui::BeginTabBar("Euryopa")) {
+			static int ide = 0;
+			static ImVector<ObjectDef*> ideObjs = {};
+			static int ideObjectID = 0;
+
+			if (ImGui::BeginTabItem("IDE")) {
+				if (ideObjs.empty())
+					uiUpdateIDEObjList(ideObjs, GetIDEGameFiles()[ide]);
+
+				if (ImGui::BeginListBox("IDE", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
+					for (int n = 0; n < GetIDEGameFiles().size(); n++) {
+						const char* name = GetIDEGameFiles()[n]->m_name;
+						bool is_selected = n == ide;
+						if (ImGui::Selectable(name, is_selected)) {
+							ide = n;
+
+							ideObjs.clear();
+							uiUpdateIDEObjList(ideObjs, GetIDEGameFiles()[ide]);
+							ideObjectID = 0;
+						}
+						if (is_selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+					}
+					ImGui::EndListBox();
+				}
+
+				ImGui::Dummy({ 0.0f, 8.0f });
+
+				// 
+				static const char buf[200];
+				ImGuiTextFilter filter;
+
+				if (ImGui::BeginListBox("Objects", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
+					for (int i = 0; i < ideObjs.size(); ++i) {
+						const auto& obj = ideObjs[i];
+
+						if (!filter.PassFilter(obj->m_name))
+							continue;
+
+						bool isSelected = (ideObjectID == i);
+						if (ImGui::Selectable(obj->m_name, isSelected)) {
+							ideObjectID = i;
+						}
+					}
+
+					ImGui::EndListBox();
+				}
+
+				filter.Draw("Search");
+
+				ImGui::Dummy({ 0.0f, 16.0f });
+
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("IPL")) {
+				static int ipl = 0;
+				static ImVector<ObjectInst*> iplObjs = {};
+				static int iplObjectID = 0;
+
+				if (iplObjs.empty())
+					uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
+
+				if (ImGui::BeginListBox("IPL", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
+					for (int n = 0; n < GetIPLGameFiles().size(); n++) {
+						const char* name = GetIPLGameFiles()[n]->m_name;
+						bool is_selected = n == ipl;
+						if (ImGui::Selectable(name, is_selected)) {
+							ipl = n;
+
+							iplObjs.clear();
+							uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
+						}
+						if (is_selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+					}
+					ImGui::EndListBox();
+				}
+				ImGui::EndTabItem();
+
+				static const char buf[200];
+				ImGuiTextFilter filter;
+
+				if (ImGui::BeginListBox("Objects", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
+					for (int i = 0; i < iplObjs.size(); ++i) {
+						const auto& obj = iplObjs[i];
+
+						if (!filter.PassFilter(obj->m_modelName))
+							continue;
+
+						bool isSelected = (iplObjectID == i);
+						if (ImGui::Selectable(obj->m_modelName, isSelected)) {
+							ClearSelection();
+							obj->Select();
+							iplObjectID = i;
+						}
+					}
+
+					ImGui::EndListBox();
+				}
+
+				filter.Draw("Search");
+
+				if (ImGui::Button("+")) {
+					ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[ipl], ideObjs[ideObjectID]->m_id);
+					if (inst) {
+						inst->Select();
+						iplObjectID = 0;
+						iplObjs.clear();
+					}
+				}
+				ImGui::SameLine();
+				ImGui::Text(ideObjs[ideObjectID]->m_name);
+
+				//static int ide = 0;
+				//static ImVector<ObjectDef*> objs = {};
+				//static int id = 0;
+				//
+				//if (objs.empty())
+				//	uiUpdateObjList(objs, GetIDEGameFiles()[ide]);
+				//
+				//if (ImGui::BeginCombo("IDE", GetIDEGameFiles().size() > 0 ? GetIDEGameFiles()[ide]->m_name : nil)) {
+				//	for (int n = 0; n < GetIDEGameFiles().size(); n++) {
+				//		const char* name = GetIDEGameFiles()[n]->m_name;
+				//		bool is_selected = n == ide;
+				//		if (ImGui::Selectable(name, is_selected)) {
+				//			ide = n;
+				//
+				//			objs.clear();
+				//			uiUpdateObjList(objs, GetIDEGameFiles()[ide]);
+				//			id = 0;
+				//		}
+				//		if (is_selected) {
+				//			ImGui::SetItemDefaultFocus();
+				//		}
+				//	}
+				//
+				//	ImGui::EndCombo();
+				//}
+				//
+				//ImGui::Dummy({ 0.0f, 8.0f });
+				//
+				//static const char buf[200];
+				//ImGuiTextFilter filter;
+				//filter.Draw("Search");
+				//
+				//if (ImGui::BeginListBox("Objects")) {
+				//	for (int i = 0; i < objs.size(); ++i) {
+				//		const auto& obj = objs[i];
+				//
+				//		if (!filter.PassFilter(obj->m_name))
+				//			continue;
+				//
+				//		bool isSelected = (id == i);
+				//		if (ImGui::Selectable(obj->m_name, isSelected)) {
+				//			id = i;
+				//		}
+				//	}
+				//
+				//	ImGui::EndListBox();
+				//}
+				//
+				//ImGui::Dummy({ 0.0f, 16.0f });
+				//
+				//static int ipl = 0;
+				//if (ImGui::BeginCombo("IPL", GetIPLGameFiles().size() > 0 ? GetIPLGameFiles()[ipl]->m_name : nil)) {
+				//	for (int n = 0; n < GetIPLGameFiles().size(); n++) {
+				//		const char* name = GetIPLGameFiles()[n]->m_name;
+				//		bool is_selected = n == ipl;
+				//		if (ImGui::Selectable(name, is_selected))
+				//			ipl = n;
+				//		if (is_selected)
+				//			ImGui::SetItemDefaultFocus();
+				//	}
+				//	ImGui::EndCombo();
+				//}
+				//
+				//ImGui::Text(objs[id]->m_name);
+				//
+				//if (ImGui::Button("Add to the scene")) {
+				//	ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[ipl], objs[id]->m_id);
+				//	if (inst) {
+				//		inst->Select();
+				//	}
+				//}
+				//
+				//ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("SELECTION")) {
+				if (ImGui::BeginChild("Details", ImVec2(0, 0))) {
+					if (selection.first) {
+						ObjectInst* inst = (ObjectInst*)selection.first->item;
+						if (ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
+							uiInstInfo(inst);
+						if (ImGui::CollapsingHeader("Object", ImGuiTreeNodeFlags_DefaultOpen))
+							uiObjInfo(GetObjectDef(inst->m_objectId));
+					}
+					else {
+						ImGui::TextDisabled("No object selected");
+					}
+					ImGui::EndChild();
+				}
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+		ImGui::End();
 	}
-	else{
-		ImGui::TextDisabled("No object selected");
-	}
-	ImGui::EndChild();
-	ImGui::End();
 }
 
 static void

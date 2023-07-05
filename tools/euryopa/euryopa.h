@@ -246,14 +246,18 @@ void Update(void);
 // TODO, this is a stub
 struct GameFile
 {
-	char *name;
+	char *m_name;
+	char *m_fileName;
+	bool m_altered;
 	// types of files we want to have eventually:
 	//	IDE Definition
 	//	IPL Scene
 	//	COL ?
 	//	IMG ?
 };
-GameFile *NewGameFile(char *path);
+GameFile *NewGameFile(char *type, char *path);
+ImVector<GameFile*> GetIDEGameFiles();
+ImVector<GameFile*> GetIPLGameFiles();
 
 bool IsHourInRange(int h1, int h2);
 void FindVersion(void);
@@ -392,7 +396,7 @@ struct ObjectDef
 ObjectDef *AddObjectDef(int id);
 ObjectDef *GetObjectDef(int id);
 ObjectDef *GetObjectDef(const char *name, int *id);
-
+ObjectDef **GetObjectDef();
 
 struct FileObjectInstance
 {
@@ -405,8 +409,6 @@ struct FileObjectInstance
 
 struct ObjectInst
 {
-	int m_lineIndex;
-	bool m_altered;
 	char m_modelName[MODELNAMELEN];
 
 	rw::V3d m_translation;
@@ -461,6 +463,7 @@ extern CPtrList instances;
 extern CPtrList selection;
 ObjectInst *GetInstanceByID(int32 id);
 ObjectInst *AddInstance(void);
+void RemoveInstance(ObjectInst* inst);
 void ClearSelection(void);
 
 
@@ -484,7 +487,7 @@ int GetSectorIndexX(float x);
 int GetSectorIndexY(float x);
 bool IsInstInBounds(ObjectInst *inst);
 void InsertInstIntoSectors(ObjectInst *inst);
-
+void RemoveInstFromSectors(ObjectInst *inst);
 
 struct IplDef
 {
@@ -515,6 +518,7 @@ struct DatDesc
 };
 
 char *LoadLine(FILE *f, bool spc = false);
+bool JumpToLine(FILE* file, int lineNum);
 void LoadLevel(const char *filename);
 rw::TexDictionary *LoadTexDictionary(const char *path);
 void SaveDataFiles();

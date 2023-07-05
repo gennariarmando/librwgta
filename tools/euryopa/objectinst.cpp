@@ -41,7 +41,6 @@ ObjectInst::CreateRwObject(void)
 void
 ObjectInst::Init(FileObjectInstance *fi)
 {
-	m_altered = false;
 	m_objectId = fi->objectId;
 	if(fi->area & 0x100) m_isUnimportant = true;
 	if(fi->area & 0x400) m_isUnderWater = true;
@@ -195,9 +194,17 @@ AddInstance(void)
 	memset(inst, 0, sizeof(ObjectInst));
 	inst->m_id = id++;
 	instances.InsertItem(inst);
+
 	return inst;
 }
 
+void 
+RemoveInstance(ObjectInst* inst)
+{
+	RemoveInstFromSectors(inst);
+	instances.RemoveItem(inst);
+	delete inst;
+}
 
 
 
@@ -322,3 +329,36 @@ InsertInstIntoSectors(ObjectInst *inst)
 		}
 }
 
+void 
+RemoveInstFromSectors(ObjectInst* inst) 
+{
+	Sector* s;
+	CPtrList* list;
+	int x, xstart, xmid, xend;
+	int y, ystart, ymid, yend;
+
+	if (!IsInstInBounds(inst)) {
+		list = inst->m_isBigBuilding ? &outOfBoundsSector.bigbuildings : &outOfBoundsSector.buildings;
+		list->RemoveItem(inst);
+		return;
+	}
+
+	CRect bounds = inst->GetBoundRect();
+
+	xstart = GetSectorIndexX(bounds.left);
+	xend = GetSectorIndexX(bounds.right);
+	xmid = GetSectorIndexX((bounds.left + bounds.right) / 2.0f);
+	ystart = GetSectorIndexY(bounds.bottom);
+	yend = GetSectorIndexY(bounds.top);
+	ymid = GetSectorIndexY((bounds.bottom + bounds.top) / 2.0f);
+
+	for (y = ystart; y <= yend; y++)
+		for (x = xstart; x <= xend; x++) {
+			s = GetSector(x, y);
+			if (x == xmid && y == ymid)
+				list = inst->m_isBigBuilding ? &s->bigbuildings : &s->buildings;
+			else
+				list = inst->m_isBigBuilding ? &s->bigbuildings_overlap : &s->buildings_overlap;
+			list->RemoveItem(inst);
+		}
+}

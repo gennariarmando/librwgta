@@ -364,3 +364,9 @@ GetObjectDef(const char *name, int *id)
 	}
 	return nil;
 }
+
+ObjectDef**
+GetObjectDef()
+{
+	return objdefs;
+}

@@ -1,11 +1,51 @@
 #include "euryopa.h"
 
+ImVector<GameFile*> ideFiles;
+ImVector<GameFile*> iplFiles;
+
+const char*
+GetFileName(const char* filePath) 
+{
+	const char* fileNameStart = nullptr;
+	const char* currentChar = filePath;
+
+	while (*currentChar) {
+		if (*currentChar == '/' || *currentChar == '\\') {
+			fileNameStart = currentChar + 1;
+		}
+		currentChar++;
+	}
+
+	return fileNameStart ? fileNameStart : filePath;
+}
+
 GameFile*
-NewGameFile(char *path)
+NewGameFile(char *type, char *path)
 {
 	GameFile *f = new GameFile;
-	f->name = strdup(path);
+	f->m_name = strdup(path);
+	f->m_fileName = strdup(GetFileName(path));
+
+	f->m_altered = false;
+
+	if (!strcmp(type, "IDE"))
+		ideFiles.push_back(f);
+	else if (!strcmp(type, "IPL"))
+		iplFiles.push_back(f);
+
 	return f;
+}
+
+ImVector<GameFile*> 
+GetIDEGameFiles() 
+{
+	return ideFiles;
+}
+
+ImVector<GameFile*>
+GetIPLGameFiles()
+{
+	return iplFiles;
 }
 
 namespace FileLoader {
@@ -54,62 +94,115 @@ again:
 	return s;
 }
 
+bool 
+JumpToLine(FILE* file, int lineNum) 
+{
+	if (!file)
+		return false;
+
+	fseek(file, 0, SEEK_SET);
+
+	int currentLine = 1;
+	int ch;
+	while ((ch = fgetc(file)) != EOF) {
+		if (ch == '\n') {
+			++currentLine;
+
+			if (currentLine == lineNum)
+				break;
+		}
+	}
+
+	if (currentLine != lineNum) {
+		fseek(file, 0, SEEK_SET);
+		return false;
+	}
+
+	return true;
+}
+
+int
+PrintInstLine(FILE **f, const ObjectInst* inst)
+{
+	int n = 0;
+	if (isSA()) {
+		fprintf(*f, "%d, %s, %d, %g, %g, %g, %g, %g, %g, %g, %d \n",
+			inst->m_objectId, inst->m_modelName, inst->m_area,
+			inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
+			inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w,
+			inst->m_lod);
+	}
+	else {
+		n = fprintf(*f, "%d, %s, %g, %g, %g, %g, %g, %g, %g, %g, %g, %g \n",
+			inst->m_objectId, inst->m_modelName,
+			inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
+			inst->m_scale.x, inst->m_scale.y, inst->m_scale.z,
+			inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w);
+	}
+
+	return n;
+}
+
 void
 SaveDataFiles()
 {
-	for (CPtrNode* p = instances.first; p; p = p->next) {
-		ObjectInst* inst = (ObjectInst*)p->item;
-		if (!inst->m_altered)
+	for (int i = 0; i < GetIPLGameFiles().size(); i++) {
+		GameFile* gameFile = GetIPLGameFiles()[i];
+
+		if (!gameFile->m_altered)
 			continue;
 
 		FILE* file;
 		FILE* fileTemp;
-
-		char* line;
-		int lineNum = 1;
-		int n;
-		int count;
 		char tempFileName[MAX_PATH];
-		strcpy(tempFileName, inst->m_file->name);
+		strcpy(tempFileName, gameFile->m_name);
 		strcat(tempFileName, ".tmp");
 		puts(tempFileName);
 
-		file = fopen_ci(inst->m_file->name, "r");
 		fileTemp = fopen_ci(tempFileName, "w");
 
-		if (file != nil && fileTemp != nil) {
-			count = 0;
-			while (line = LoadLine(file, true)) {
-				count++;
+		fprintf(fileTemp, "# IPL generated from Euryopa file %s \n", gameFile->m_fileName);
 
-				if (count == inst->m_lineIndex) {
-					if (isSA()) {
-						fprintf(fileTemp, "%d, %s, %d, %f, %f, %f, %f, %f, %f, %f, %d \n",
-							inst->m_objectId, inst->m_modelName, inst->m_area,
-							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
-							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w,
-							inst->m_lod);
-					}
-					else {
-						n = fprintf(fileTemp, "%d, %s, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f \n",
-							inst->m_objectId, inst->m_modelName,
-							inst->m_translation.x, inst->m_translation.y, inst->m_translation.z,
-							inst->m_scale.x, inst->m_scale.y, inst->m_scale.z,
-							inst->m_rotation.x, inst->m_rotation.y, inst->m_rotation.z, inst->m_rotation.w);
-					}
+		fprintf(fileTemp, "inst \n");
+
+		for (CPtrNode* p = instances.first; p; p = p->next) {
+			ObjectInst* inst = (ObjectInst*)p->item;
+
+			if (inst->m_file == gameFile) {
+				PrintInstLine(&fileTemp, inst);
+			}
+		}
+
+		fprintf(fileTemp, "end \n");
+
+		file = fopen_ci(gameFile->m_name, "r");
+		
+		char *line;
+		bool inst_found = false;
+		bool inst_end_found = false;
+		while (line = LoadLine(file, true)) {
+			if (line[0] == '#')
+				continue; 
+
+			if (!inst_end_found) {
+				if (!strncmp(line, "inst", 4)) {
+					inst_found = true;
 				}
-				else {
-					fprintf(fileTemp, line);
-					fprintf(fileTemp, "\n");
+				else if (inst_found && !strncmp(line, "end", 3)) {
+					inst_end_found = true;
 				}
 			}
-
-			fclose(file);
-			fclose(fileTemp);
-
-			remove(inst->m_file->name);
-			rename(tempFileName, inst->m_file->name);
+			else {
+				fprintf(fileTemp, line);
+				fprintf(fileTemp, "\n");
+			}
 		}
+		
+		fclose(file);
+		fclose(fileTemp);
+
+		remove(gameFile->m_name);
+		rename(tempFileName, gameFile->m_name);
 	}
 }
 
@@ -345,7 +438,6 @@ LoadObjectInstance(char *line)
 		tmpInsts[numTmpInsts++] = inst;
 
 	inst->m_file = currentFile;
-	inst->m_lineIndex = numInstLine;
 	strcpy(inst->m_modelName, model);
 }
 
@@ -709,7 +801,7 @@ LoadLevel(const char *filename)
 //			eLevelName currlevel = CGame::currLevel;
 //			sscanf(line+8, "%d", (int*)&CGame::currLevel);
 			strncpy(path, line+10, 256);
-			currentFile = NewGameFile(path);
+			currentFile = NewGameFile("COLFILE", path);
 			LoadCollisionFile(path);
 //			CGame::currLevel = currlevel;
 		}else if(strncmp(line, "MODELFILE", 9) == 0){
@@ -722,7 +814,7 @@ LoadLevel(const char *filename)
 //			debug("HIERFILE\n");
 		}else if(strncmp(line, "IDE", 3) == 0){
 			strncpy(path, line+4, 256);
-			currentFile = NewGameFile(path);
+			currentFile = NewGameFile("IDE", path);
 			LoadObjectTypes(path);
 		}else if(strncmp(line, "IPL", 3) == 0){
 			if(!haveFinishedDefinitions){
@@ -732,12 +824,12 @@ LoadLevel(const char *filename)
 			}
 
 			strncpy(path, line+4, 256);
-			currentFile = NewGameFile(path);
+			currentFile = NewGameFile("IPL", path);
 			LoadScene(path);
 		}else if(strncmp(line, "MAPZONE", 7) == 0){
 //			debug("MAPZONE\n");
 			strncpy(path, line+8, 256);
-			currentFile = NewGameFile(path);
+			currentFile = NewGameFile("MAPZONE", path);
 			LoadMapZones(path);
 		}else if(strncmp(line, "SPLASH", 6) == 0){
 //			printf("[SPLASH %s]\n", line+7);
