@@ -8,6 +8,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <stack>
 
 #include <rwgta.h>
 #define PS2
@@ -256,8 +257,9 @@ struct GameFile
 	//	IMG ?
 };
 GameFile *NewGameFile(char *type, char *path);
-ImVector<GameFile*> GetIDEGameFiles();
-ImVector<GameFile*> GetIPLGameFiles();
+ImVector<GameFile*>& GetIDEGameFiles();
+ImVector<GameFile*>& GetIPLGameFiles();
+
 
 bool IsHourInRange(int h1, int h2);
 void FindVersion(void);
@@ -409,7 +411,7 @@ struct FileObjectInstance
 
 struct ObjectInst
 {
-	char m_modelName[MODELNAMELEN];
+	bool removed;
 
 	rw::V3d m_translation;
 	rw::V3d m_prevTranslation;
@@ -421,6 +423,8 @@ struct ObjectInst
 	rw::Quat m_prevRotation;
 	// cached form of the above
 	rw::Matrix m_matrix;
+
+	char m_modelName[MODELNAMELEN];
 	int m_objectId;
 	int m_area;
 
@@ -464,8 +468,11 @@ extern CPtrList selection;
 ObjectInst *GetInstanceByID(int32 id);
 ObjectInst *AddInstance(void);
 void RemoveInstance(ObjectInst* inst);
+void CopySelectedInstances(void);
 void ClearSelection(void);
-
+ObjectInst* AddNewObjectInst(GameFile* file, int id);
+void PasteCopiedInstances(void);
+void DeleteSelectedInstances(void);
 
 // World/sectors
 
@@ -614,5 +621,139 @@ namespace Clouds
 // GUI
 //
 
+int guiGetIde(void);
+int guiGetIpl(void);
+void guiSaveLayout(void);
+void guiLoadLayout(void);
+void guiResetLayout(void);
 void gui(void);
 void uiShowCdImages(void);
+
+template <typename T>
+struct InstVector : std::stack<T>
+{
+
+};
+
+struct InstHistory
+{
+private:
+	static constexpr size_t size = sizeof(bool) + (sizeof(rw::V3d) * 4) + (sizeof(rw::Quat) * 2);
+	static constexpr size_t maxHistory = 20;
+
+	struct History
+    {
+		ObjectInst mem;
+		ObjectInst* ptr;
+	};
+
+	InstVector<History> m_undo;
+	InstVector<History> m_redo;
+
+public:
+	InstHistory() = default;
+
+	static ObjectInst copy(ObjectInst* inst)
+	{
+		ObjectInst out = {};
+		memcpy(&out, inst, size);
+		return out;
+	}
+
+	bool cmpv3(rw::V3d const& v1, rw::V3d const& v2)
+	{
+		return v1.x == v2.x && v1.y == v2.y && v1.z == v2.z;
+	}
+
+	bool cmpquad(rw::Quat const& q1, rw::Quat const& q2) 
+	{
+		return q1.x == q2.x && q1.y == q2.y && q1.z == q2.z && q1.w == q2.w;
+	}
+
+	bool compare(const ObjectInst* inst1, const ObjectInst* inst2) 
+	{
+		return cmpv3(inst1->m_translation, inst2->m_translation) &&
+			cmpv3(inst1->m_scale, inst2->m_scale) &&
+			cmpquad(inst1->m_rotation, inst2->m_rotation);
+	}
+
+	void push_back(ObjectInst* ptr)
+	{
+		if (m_undo.size() > 0 && compare(ptr, &m_undo.top().mem))
+			return;
+
+		History prevState;
+		prevState.mem = copy(ptr);
+		prevState.ptr = ptr;
+		m_undo.push(prevState);
+
+		while (!m_redo.empty()) {
+			m_redo.pop();
+		}
+
+		if (m_undo.size() > maxHistory)
+			m_undo.pop();
+
+		//log("push_back %s \n", ptr->m_modelName);
+	}
+
+	ObjectInst* get_undo_back()
+	{
+		if (m_undo.empty())
+			return nil;
+
+		return m_undo.top().ptr;
+	}
+
+
+	ObjectInst* get_redo_back() 
+	{
+		if (m_redo.empty())
+			return nil;
+
+		return m_redo.top().ptr;
+	}
+
+	ObjectInst* undo()
+	{
+		if (m_undo.empty())
+			return nil;
+
+		History prevState = m_undo.top();
+		m_undo.pop();
+
+		History redoState;
+		redoState.mem = copy(prevState.ptr);
+		redoState.ptr = prevState.ptr;
+		m_redo.push(redoState);
+
+		memcpy(prevState.ptr, &prevState.mem, size);
+
+		log("undo %s \n", prevState.ptr->m_modelName);
+
+		return prevState.ptr;
+	}
+
+	ObjectInst* redo()
+	{
+		if (m_redo.empty())
+			return nil;
+
+		History redoState = m_redo.top();
+		m_redo.pop();
+
+		History prevState;
+		prevState.mem = copy(redoState.ptr);
+		prevState.ptr = redoState.ptr;
+		m_undo.push(prevState);
+
+		memcpy(redoState.ptr, &redoState.mem, size);
+
+		log("redo %s \n", prevState.ptr->m_modelName);
+
+		return redoState.ptr;
+	}
+};
+
+InstHistory& GetInstHistory();
+InstVector<ObjectInst>& GetCopyInst();

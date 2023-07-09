@@ -250,6 +250,10 @@ project "euryopa"
 	files { "tools/euryopa/minilzo/minilzo.c" }
 	removeplatforms { "*null" }
 	removeplatforms { "ps2" }
+	
+	postbuildcommands "copy /y \"$(TargetPath)\" \"$(GTA_III_DIR)\\euryopa.exe\""
+	debugdir "$(GTA_III_DIR)"
+	debugcommand "$(GTA_III_DIR)/euryopa.exe"
 
 project "gtaclumpview"
 	kind "WindowedApp"

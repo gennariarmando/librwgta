@@ -36,13 +36,13 @@ NewGameFile(char *type, char *path)
 	return f;
 }
 
-ImVector<GameFile*> 
-GetIDEGameFiles() 
+ImVector<GameFile*>&
+GetIDEGameFiles()
 {
 	return ideFiles;
 }
 
-ImVector<GameFile*>
+ImVector<GameFile*>&
 GetIPLGameFiles()
 {
 	return iplFiles;
@@ -168,7 +168,7 @@ SaveDataFiles()
 		for (CPtrNode* p = instances.first; p; p = p->next) {
 			ObjectInst* inst = (ObjectInst*)p->item;
 
-			if (inst->m_file == gameFile) {
+			if (inst && inst->m_file == gameFile) {
 				PrintInstLine(&fileTemp, inst);
 			}
 		}

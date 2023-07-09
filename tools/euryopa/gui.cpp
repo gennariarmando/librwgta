@@ -1,9 +1,12 @@
-#include "euryopa.h"
-#include "imgui/imgui_internal.h"
+﻿#include "euryopa.h"
 
 static bool showDemoWindow;
 static bool showEditorWindow;
-static bool showInstanceWindow;
+
+static bool showIDEWindow;
+static bool showIPLWindow;
+static bool showSelectedWindow;
+
 static bool showLogWindow;
 static bool showHelpWindow;
 
@@ -12,6 +15,29 @@ static bool showViewWindow;
 static bool showRenderingWindow;
 
 static float dragSpeed = 0.1f;
+
+static int ide = 0;
+static ImVector<ObjectDef*> ideObjs = {};
+static int ideObjectID = 0;
+
+static int ipl = 0;
+static ImVector<ObjectInst*> iplObjs = {};
+static int iplObjectID = 0;
+
+int
+guiGetIde(void)
+{
+	return ide;
+}
+
+int 
+guiGetIpl(void)
+{
+	return ipl;
+}
+
+
+static bool resetWindowLayout = false;
 
 // From the demo, slightly changed
 struct ExampleAppLog
@@ -30,7 +56,7 @@ struct ExampleAppLog
 		Buf.appendfv(fmt, args);
 		for(int new_size = Buf.size(); old_size < new_size; old_size++)
 			if(Buf[old_size] == '\n')
-				LineOffsets.push_back(old_size);
+				LineOffsets.push_back(old_size + 1);
 		ScrollToBottom = true;
 	}
 
@@ -76,7 +102,6 @@ struct ExampleAppLog
 	}
 };
 
-
 static void
 uiMainmenu(void)
 {
@@ -92,39 +117,51 @@ uiMainmenu(void)
 			if(ImGui::MenuItem("Exit", "Alt+F4")) sk::globals.quit = 1;
 			ImGui::EndMenu();
 		}
+
 		if (gameLoaded){
-			if(ImGui::BeginMenu("Window")){
-				if(ImGui::MenuItem("Time & Weather", "T", showTimeWeatherWindow)) { showTimeWeatherWindow ^= 1; }
-				if(ImGui::MenuItem("View", "V", showViewWindow)) { showViewWindow ^= 1; }
-				if(ImGui::MenuItem("Rendering", "R", showRenderingWindow)) { showRenderingWindow ^= 1; }
-				if(ImGui::MenuItem("Object Info", "I", showInstanceWindow)) { showInstanceWindow ^= 1; }
-				if(ImGui::MenuItem("Editor ", nil, showEditorWindow)) { showEditorWindow ^= 1; }
-				if(ImGui::MenuItem("Log ", nil, showLogWindow)) { showLogWindow ^= 1; }
-				if(ImGui::MenuItem("Demo ", nil, showDemoWindow)) { showDemoWindow ^= 1; }
-				if(ImGui::MenuItem("Help", nil, showHelpWindow)) { showHelpWindow ^= 1; }
+			if (ImGui::BeginMenu("Edit")) {
+				if (ImGui::MenuItem("Add", "CTRL + A")) {}
+				if (ImGui::MenuItem("Copy", "CTRL + C", (bool)0, selection.first)) { CopySelectedInstances(); }
+				if (ImGui::MenuItem("Paste", "CTRL + V", (bool)0, !GetCopyInst().empty())) { PasteCopiedInstances(); }
+				if (ImGui::MenuItem("Delete", "DEL", (bool)0, false)) { DeleteSelectedInstances(); }
 				ImGui::EndMenu();
 			}
-		}
-		if(params.numAreas){
-			ImGui::PushItemWidth(100);
-			if(ImGui::BeginCombo("Area", params.areaNames[currentArea])){
-				for(int n = 0; n < params.numAreas; n++){
-					bool is_selected = n == currentArea;
-					static char str[100];
-					sprintf(str, "%d - %s", n, params.areaNames[n]);
-					if(ImGui::Selectable(str, is_selected))
-						currentArea = n;
-					if(is_selected)
-						ImGui::SetItemDefaultFocus();
-				}
-				ImGui::EndCombo();
+			if(ImGui::BeginMenu("Window")){
+				if (ImGui::MenuItem("Reset Default Layout")) resetWindowLayout = true;
+				ImGui::MenuItem("Time & Weather", nil, &showTimeWeatherWindow);
+				ImGui::MenuItem("View", nil, &showViewWindow);
+				ImGui::MenuItem("Rendering", nil, &showRenderingWindow);
+				ImGui::MenuItem("IDE", nil, &showIDEWindow);
+				ImGui::MenuItem("IPL", nil, &showIPLWindow);
+				ImGui::MenuItem("Selected", nil, &showSelectedWindow);
+
+				ImGui::MenuItem("Editor ", nil, &showEditorWindow);
+				ImGui::MenuItem("Log ", nil, &showLogWindow);
+				ImGui::MenuItem("Demo ", nil, &showDemoWindow);
+				ImGui::MenuItem("Help", nil, &showHelpWindow);
+				ImGui::EndMenu();
 			}
-			ImGui::PopItemWidth();
+			
+			if(params.numAreas){
+				ImGui::PushItemWidth(100);
+				if(ImGui::BeginCombo("Area", params.areaNames[currentArea])){
+					for(int n = 0; n < params.numAreas; n++){
+						bool is_selected = n == currentArea;
+						static char str[100];
+						sprintf(str, "%d - %s", n, params.areaNames[n]);
+						if(ImGui::Selectable(str, is_selected))
+							currentArea = n;
+						if(is_selected)
+							ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::PopItemWidth();
+			}
 		}
-
-
 		ImGui::Separator();
 		ImGui::Text("%.3f ms/frame %.1f FPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
 		ImGui::EndMainMenuBar();
 	}
 }
@@ -371,48 +408,12 @@ uiRendering(void)
 		ImGui::Checkbox("Enable TimeCycle boxes", &gEnableTimecycleBoxes);
 }
 
-ObjectInst*
-AddNewObjectInst(GameFile* file, int id) {
-	FileObjectInstance fi;
-	fi.position = TheCamera.m_position;
-	fi.position.x += TheCamera.m_at.x * 2.0f;
-	fi.position.y += TheCamera.m_at.y * 2.0f;
-	fi.position.z += TheCamera.m_at.z * 2.0f;
-
-
-	fi.rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-	fi.objectId = id;
-	fi.area = currentArea;
-	fi.lod = -1;
-
-	float sx(1.0f), sy(1.0f), sz(1.0f);
-
-	ObjectDef* obj = GetObjectDef(id);
-	if (obj == nil) {
-		log("warning: object %d was never defined\n", id);
-		return nil;
-	}
-
-	ObjectInst* inst = AddInstance();
-	inst->Init(&fi);
-	inst->m_scale = { sx, sy, sz };
-	inst->m_prevScale = { sx, sy, sz };
-
-	if (!isSA() && obj->m_isBigBuilding)
-		inst->SetupBigBuilding();
-
-	inst->m_file = file;
-	strcpy(inst->m_modelName, obj->m_name);
-
-	InsertInstIntoSectors(inst);
-	inst->m_file->m_altered = true;
-
-	return inst;
-}
-
 static void
 uiUpdateIDEObjList(ImVector<ObjectDef*>& objs, GameFile* file)
 {
+	if (!file)
+		return;
+
 	for (int i = 0; i < NUMOBJECTDEFS; i++) {
 		ObjectDef* def = GetObjectDef(i);
 
@@ -424,10 +425,13 @@ uiUpdateIDEObjList(ImVector<ObjectDef*>& objs, GameFile* file)
 static void
 uiUpdateIPLObjList(ImVector<ObjectInst*>& objs, GameFile* file)
 {
+	if (!file)
+		return;
+
 	for (CPtrNode* p = instances.first; p; p = p->next) {
 		ObjectInst* inst = (ObjectInst*)p->item;
 
-		if (inst && inst->m_file == file)
+		if (inst && !inst->removed && inst->m_file == file)
 			objs.push_back(inst);
 	}
 }
@@ -440,42 +444,49 @@ uiInstInfo(ObjectInst *inst)
 
 	static char buf[MODELNAMELEN];
 	strncpy(buf, obj->m_name, MODELNAMELEN);
-	ImGui::InputText("Model", buf, MODELNAMELEN);
+	ImGui::Text("Model: %s", buf, MODELNAMELEN);
 
 	ImGui::Text("IPL: %s", inst->m_file->m_name);
 
 	ImGui::Spacing();
-	bool altered = ImGui::DragFloat3("pos", (float*)&inst->m_translation, dragSpeed);
+
+	ObjectInst temp = *inst;
+
+	static bool once = false;
+	bool altered = ImGui::DragFloat3("pos", (float*)&temp.m_translation, dragSpeed);
 
 	if (gameversion != GAME_SA) {
 		ImGui::Spacing();
-		altered |= ImGui::DragFloat3("scale", (float*)&inst->m_scale, dragSpeed);
+		altered |= ImGui::DragFloat3("scale", (float*)&temp.m_scale, dragSpeed);
 	}
 
 	ImGui::Spacing();
-	altered |= ImGui::DragFloat4("rot", (float*)&inst->m_rotation, dragSpeed);
+	altered |= ImGui::DragFloat4("rot", (float*)&temp.m_rotation, dragSpeed);
 
-	if (altered)
+	if (altered) {
 		inst->m_file->m_altered = true;
+
+		if (!once) {
+			GetInstHistory().push_back(inst);
+			once = true;
+		}
+
+		inst->m_translation = temp.m_translation;
+		inst->m_scale = temp.m_scale;
+		inst->m_rotation = temp.m_rotation;
+		inst->UpdateMatrix();
+	}
+	else
+		once = false;
 
 	ImGui::Spacing();
 	if (ImGui::Button("Reset to default")){
+		GetInstHistory().push_back(inst);
 		inst->m_translation = inst->m_prevTranslation;
 		inst->m_rotation = inst->m_prevRotation;
 		inst->m_scale = inst->m_prevScale;
 	}
 
-	inst->UpdateMatrix();
-
-	//ImGui::Text("Translation: %.3f %.3f %.3f",
-	//	inst->m_translation.x,
-	//	inst->m_translation.y,
-	//	inst->m_translation.z);
-	//ImGui::Text("Rotation: %.3f %.3f %.3f %.3f",
-	//	inst->m_rotation.x,
-	//	inst->m_rotation.y,
-	//	inst->m_rotation.x,
-	//	inst->m_rotation.w);
 	if(params.numAreas)
 		ImGui::Text("Area: %d", inst->m_area);
 
@@ -498,9 +509,9 @@ uiObjInfo(ObjectDef *obj)
 
 	ImGui::Text("ID: %d\n", obj->m_id);
 	strncpy(buf, obj->m_name, MODELNAMELEN);
-	ImGui::InputText("Model", buf, MODELNAMELEN);
+	ImGui::Text("Model: %s", buf, MODELNAMELEN);
 	strncpy(buf, txd->name, MODELNAMELEN);
-	ImGui::InputText("TXD", buf, MODELNAMELEN);
+	ImGui::Text("TXD: %s", buf, MODELNAMELEN);
 
 	ImGui::Text("IDE: %s", obj->m_file->m_name);
 	if(obj->m_colModel && !obj->m_gotChildCol)
@@ -685,225 +696,137 @@ uiEditorWindow(void)
 }
 
 static void
-uiInstWindow(void)
-{
-	ImGuiContext& g = *GImGui;
-	float y = g.FontBaseSize + g.Style.FramePadding.y * 2.0f;	// height of main menu
-	ImGui::SetNextWindowPos({ (float)sk::globals.width, y }, 0, { 1, 0 });
-	ImGui::SetNextWindowSize({ 320, (float)sk::globals.height });
+uiIDEWindow(void)
+{	
+	ImGui::Begin("Ide", &showIDEWindow);
 
-	if (gameLoaded && ImGui::Begin("World", &showInstanceWindow, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_HorizontalScrollbar)) {
-		if (ImGui::BeginTabBar("Euryopa")) {
-			static int ide = 0;
-			static ImVector<ObjectDef*> ideObjs = {};
-			static int ideObjectID = 0;
+	if (ImGui::CollapsingHeader("Ide Files", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::BeginListBox("Ide_ListBox", ImVec2(-FLT_MIN, 8 * ImGui::GetTextLineHeightWithSpacing()))) {
+			for (int n = 0; n < GetIDEGameFiles().size(); n++) {
+				const char* name = GetIDEGameFiles()[n]->m_name;
+				bool is_selected = n == ide;
+				if (ImGui::Selectable(name, is_selected)) {
+					ide = n;
 
-			if (ImGui::BeginTabItem("IDE")) {
-				if (ideObjs.empty())
+					ideObjs.clear();
 					uiUpdateIDEObjList(ideObjs, GetIDEGameFiles()[ide]);
-
-				if (ImGui::BeginListBox("IDE", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
-					for (int n = 0; n < GetIDEGameFiles().size(); n++) {
-						const char* name = GetIDEGameFiles()[n]->m_name;
-						bool is_selected = n == ide;
-						if (ImGui::Selectable(name, is_selected)) {
-							ide = n;
-
-							ideObjs.clear();
-							uiUpdateIDEObjList(ideObjs, GetIDEGameFiles()[ide]);
-							ideObjectID = 0;
-						}
-						if (is_selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-					}
-					ImGui::EndListBox();
+					ideObjectID = 0;
 				}
-
-				ImGui::Dummy({ 0.0f, 8.0f });
-
-				// 
-				static const char buf[200];
-				ImGuiTextFilter filter;
-
-				if (ImGui::BeginListBox("Objects", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
-					for (int i = 0; i < ideObjs.size(); ++i) {
-						const auto& obj = ideObjs[i];
-
-						if (!filter.PassFilter(obj->m_name))
-							continue;
-
-						bool isSelected = (ideObjectID == i);
-						if (ImGui::Selectable(obj->m_name, isSelected)) {
-							ideObjectID = i;
-						}
-					}
-
-					ImGui::EndListBox();
+				if (is_selected) {
+					ImGui::SetItemDefaultFocus();
 				}
-
-				filter.Draw("Search");
-
-				ImGui::Dummy({ 0.0f, 16.0f });
-
-				ImGui::EndTabItem();
 			}
-
-			if (ImGui::BeginTabItem("IPL")) {
-				static int ipl = 0;
-				static ImVector<ObjectInst*> iplObjs = {};
-				static int iplObjectID = 0;
-
-				if (iplObjs.empty())
-					uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
-
-				if (ImGui::BeginListBox("IPL", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
-					for (int n = 0; n < GetIPLGameFiles().size(); n++) {
-						const char* name = GetIPLGameFiles()[n]->m_name;
-						bool is_selected = n == ipl;
-						if (ImGui::Selectable(name, is_selected)) {
-							ipl = n;
-
-							iplObjs.clear();
-							uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
-						}
-						if (is_selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-					}
-					ImGui::EndListBox();
-				}
-				ImGui::EndTabItem();
-
-				static const char buf[200];
-				ImGuiTextFilter filter;
-
-				if (ImGui::BeginListBox("Objects", { ImGui::GetWindowSize().x - 16.0f, 320.0f })) {
-					for (int i = 0; i < iplObjs.size(); ++i) {
-						const auto& obj = iplObjs[i];
-
-						if (!filter.PassFilter(obj->m_modelName))
-							continue;
-
-						bool isSelected = (iplObjectID == i);
-						if (ImGui::Selectable(obj->m_modelName, isSelected)) {
-							ClearSelection();
-							obj->Select();
-							iplObjectID = i;
-						}
-					}
-
-					ImGui::EndListBox();
-				}
-
-				filter.Draw("Search");
-
-				if (ImGui::Button("+")) {
-					ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[ipl], ideObjs[ideObjectID]->m_id);
-					if (inst) {
-						inst->Select();
-						iplObjectID = 0;
-						iplObjs.clear();
-					}
-				}
-				ImGui::SameLine();
-				ImGui::Text(ideObjs[ideObjectID]->m_name);
-
-				//static int ide = 0;
-				//static ImVector<ObjectDef*> objs = {};
-				//static int id = 0;
-				//
-				//if (objs.empty())
-				//	uiUpdateObjList(objs, GetIDEGameFiles()[ide]);
-				//
-				//if (ImGui::BeginCombo("IDE", GetIDEGameFiles().size() > 0 ? GetIDEGameFiles()[ide]->m_name : nil)) {
-				//	for (int n = 0; n < GetIDEGameFiles().size(); n++) {
-				//		const char* name = GetIDEGameFiles()[n]->m_name;
-				//		bool is_selected = n == ide;
-				//		if (ImGui::Selectable(name, is_selected)) {
-				//			ide = n;
-				//
-				//			objs.clear();
-				//			uiUpdateObjList(objs, GetIDEGameFiles()[ide]);
-				//			id = 0;
-				//		}
-				//		if (is_selected) {
-				//			ImGui::SetItemDefaultFocus();
-				//		}
-				//	}
-				//
-				//	ImGui::EndCombo();
-				//}
-				//
-				//ImGui::Dummy({ 0.0f, 8.0f });
-				//
-				//static const char buf[200];
-				//ImGuiTextFilter filter;
-				//filter.Draw("Search");
-				//
-				//if (ImGui::BeginListBox("Objects")) {
-				//	for (int i = 0; i < objs.size(); ++i) {
-				//		const auto& obj = objs[i];
-				//
-				//		if (!filter.PassFilter(obj->m_name))
-				//			continue;
-				//
-				//		bool isSelected = (id == i);
-				//		if (ImGui::Selectable(obj->m_name, isSelected)) {
-				//			id = i;
-				//		}
-				//	}
-				//
-				//	ImGui::EndListBox();
-				//}
-				//
-				//ImGui::Dummy({ 0.0f, 16.0f });
-				//
-				//static int ipl = 0;
-				//if (ImGui::BeginCombo("IPL", GetIPLGameFiles().size() > 0 ? GetIPLGameFiles()[ipl]->m_name : nil)) {
-				//	for (int n = 0; n < GetIPLGameFiles().size(); n++) {
-				//		const char* name = GetIPLGameFiles()[n]->m_name;
-				//		bool is_selected = n == ipl;
-				//		if (ImGui::Selectable(name, is_selected))
-				//			ipl = n;
-				//		if (is_selected)
-				//			ImGui::SetItemDefaultFocus();
-				//	}
-				//	ImGui::EndCombo();
-				//}
-				//
-				//ImGui::Text(objs[id]->m_name);
-				//
-				//if (ImGui::Button("Add to the scene")) {
-				//	ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[ipl], objs[id]->m_id);
-				//	if (inst) {
-				//		inst->Select();
-				//	}
-				//}
-				//
-				//ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("SELECTION")) {
-				if (ImGui::BeginChild("Details", ImVec2(0, 0))) {
-					if (selection.first) {
-						ObjectInst* inst = (ObjectInst*)selection.first->item;
-						if (ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
-							uiInstInfo(inst);
-						if (ImGui::CollapsingHeader("Object", ImGuiTreeNodeFlags_DefaultOpen))
-							uiObjInfo(GetObjectDef(inst->m_objectId));
-					}
-					else {
-						ImGui::TextDisabled("No object selected");
-					}
-					ImGui::EndChild();
-				}
-				ImGui::EndTabItem();
-			}
-			ImGui::EndTabBar();
+			ImGui::EndListBox();
 		}
-		ImGui::End();
 	}
+
+	// 
+	static const char buf[200];
+	ImGuiTextFilter filter;
+
+	if (ImGui::CollapsingHeader("Ide Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::BeginListBox("Ide_Objects_ListBox", ImVec2(-FLT_MIN, 8 * ImGui::GetTextLineHeightWithSpacing()))) {
+			for (int i = 0; i < ideObjs.size(); ++i) {
+				const auto& obj = ideObjs[i];
+
+				if (!filter.PassFilter(obj->m_name))
+					continue;
+
+				bool isSelected = (ideObjectID == i);
+				if (ImGui::Selectable(obj->m_name, isSelected)) {
+					ideObjectID = i;
+				}
+			}
+
+			ImGui::EndListBox();
+		}
+
+		filter.Draw("Search");
+	}
+
+	ImGui::End();
+}
+
+static void
+uiIPLWindow(void)
+{
+	ImGui::Begin("Ipl", &showIPLWindow);
+
+	if (ImGui::CollapsingHeader("Ipl Files", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::BeginListBox("Ipl_ListBox", ImVec2(-FLT_MIN, 8 * ImGui::GetTextLineHeightWithSpacing()))) {
+			for (int n = 0; n < GetIPLGameFiles().size(); n++) {
+				const char* name = GetIPLGameFiles()[n]->m_name;
+				bool is_selected = n == ipl;
+				if (ImGui::Selectable(name, is_selected)) {
+					ipl = n;
+
+					iplObjs.clear();
+					uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
+				}
+				if (is_selected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndListBox();
+		}
+	}
+
+	static const char buf[200];
+	ImGuiTextFilter filter;
+
+	if (ImGui::CollapsingHeader("Ipl Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::BeginListBox("Ipl_Objects_ListBox", ImVec2(-FLT_MIN, 8 * ImGui::GetTextLineHeightWithSpacing()))) {
+			for (int i = 0; i < iplObjs.size(); ++i) {
+				const auto& obj = iplObjs[i];
+
+				if (!filter.PassFilter(obj->m_modelName))
+					continue;
+
+				bool isSelected = (iplObjectID == i);
+				if (ImGui::Selectable(obj->m_modelName, isSelected)) {
+					ClearSelection();
+					obj->Select();
+					iplObjectID = i;
+				}
+			}
+
+			ImGui::EndListBox();
+		}
+
+		filter.Draw("Search");
+	}
+
+	if (ImGui::Button("+")) {
+		ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[ipl], ideObjs[ideObjectID]->m_id);
+		if (inst) {
+			inst->Select();
+			iplObjectID = 0;
+			iplObjs.clear();
+		}
+	}
+	ImGui::SameLine();
+	ImGui::Text(ideObjs[ideObjectID]->m_name);
+
+	ImGui::End();
+}
+
+static void
+uiSelectedWindow(void)
+{
+	ImGui::Begin("Selected", &showSelectedWindow);
+
+	if (selection.first) {
+		ObjectInst* inst = (ObjectInst*)selection.first->item;
+		if (ImGui::CollapsingHeader("Instance", ImGuiTreeNodeFlags_DefaultOpen))
+			uiInstInfo(inst);
+		if (ImGui::CollapsingHeader("Object", ImGuiTreeNodeFlags_DefaultOpen))
+			uiObjInfo(GetObjectDef(inst->m_objectId));
+	}
+	else {
+		ImGui::TextDisabled("No item selected.");
+	}
+
+	ImGui::End();
 }
 
 static void
@@ -929,39 +852,209 @@ uiTest(void)
 static ExampleAppLog logwindow;
 void addToLogWindow(const char *fmt, va_list args) { logwindow.AddLog(fmt, args); }
 
+static void
+uiContextMenu(void)
+{
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_::ImGuiMouseButton_Right))
+		ImGui::OpenPopup("Main_Context_Menu");
+
+	if (ImGui::BeginPopup("Main_Context_Menu")) {
+		if (ImGui::MenuItem("Add", "CTRL + A")) {}
+		if (ImGui::MenuItem("Copy", "CTRL + C", (bool)0, selection.first)) { CopySelectedInstances(); }
+		if (ImGui::MenuItem("Paste", "CTRL + V", (bool)0, !GetCopyInst().empty())) { PasteCopiedInstances(); }
+		if (ImGui::MenuItem("Delete", "DEL", (bool)0, false)) { DeleteSelectedInstances(); }
+		ImGui::EndPopup();
+	}
+}
+
+static ImGuiWindowSettings* findWindowSetting(const char* id) {
+	ImGuiContext& g = *GImGui;
+
+	for (ImGuiWindowSettings* settings = g.SettingsWindows.begin(); settings != NULL; settings = g.SettingsWindows.next_chunk(settings))
+		if (!strcmp(settings->GetName(), id)) return settings;
+
+	return nil;
+}
+
+static void 
+checkWindowBeforeSave(const bool val, const char* id)
+{
+	if (!val) ImGui::ClearWindowSettings(id);
+}
+
+void
+guiSaveLayout(void)
+{
+	checkWindowBeforeSave(showIDEWindow, "Ide");
+	checkWindowBeforeSave(showIPLWindow, "Ipl");
+	checkWindowBeforeSave(showSelectedWindow, "Selected");
+	checkWindowBeforeSave(showLogWindow, "Log");
+
+	checkWindowBeforeSave(showTimeWeatherWindow, "Time & Weather");
+	checkWindowBeforeSave(showViewWindow, "View");
+	checkWindowBeforeSave(showRenderingWindow, "Rendering");
+	checkWindowBeforeSave(showEditorWindow, "Editor");
+	checkWindowBeforeSave(showDemoWindow, "Demo");
+	checkWindowBeforeSave(showHelpWindow, "Help");
+
+	ImGui::SaveIniSettingsToDisk("euryopa.ini");
+}
+
+static void
+checkWindowAfterLoad(bool& val, const char* id)
+{
+	val = findWindowSetting(id);
+}
+
+void
+guiLoadLayout(void)
+{
+	ImGui::LoadIniSettingsFromDisk("euryopa.ini");
+
+	checkWindowAfterLoad(showIDEWindow, "Ide");
+	checkWindowAfterLoad(showIPLWindow, "Ipl");
+	checkWindowAfterLoad(showSelectedWindow, "Selected");
+	checkWindowAfterLoad(showLogWindow, "Log");
+
+	checkWindowAfterLoad(showTimeWeatherWindow, "Time & Weather");
+	checkWindowAfterLoad(showViewWindow, "View");
+	checkWindowAfterLoad(showRenderingWindow, "Rendering");
+	checkWindowAfterLoad(showEditorWindow, "Editor");
+	checkWindowAfterLoad(showDemoWindow, "Demo");
+	checkWindowAfterLoad(showHelpWindow, "Help");
+}
+
+void
+guiResetLayout(void)
+{
+	resetWindowLayout = true;
+}
+
 void
 gui(void)
 {
-	static bool show_another_window = false;
-	static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	if (!gameLoaded) {
+		ImGuiIO& io = ImGui::GetIO();
+		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+		ImFontAtlas* atlas = io.Fonts;
+		ImFont* font = atlas->Fonts[1];
+
+		ImGui::PushFont(font);
+
+		const char* text = "Euryopa";
+		ImVec2 textSize = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0, text);
+
+		ImVec2 screenSize = ImVec2(io.DisplaySize.x, io.DisplaySize.y);
+		ImVec2 position = ImVec2(screenSize.x * 0.5f - textSize.x * 0.5f, screenSize.y * 0.45f - textSize.y * 0.5f);
+
+		float shadow = 5.0f;
+		ImVec2 shadowPos[] = {
+			{ shadow, 0.0f },
+			{ -shadow, 0.0f },
+			{ 0.0f, shadow },
+			{ 0.0f, -shadow },
+			{ shadow, shadow },
+			{ -shadow, shadow },
+			{ shadow, -shadow },
+			{ -shadow, -shadow },
+		};
+
+		for (int i = 0; i < 8; i++)
+			drawList->AddText(position + shadowPos[i], IM_COL32_BLACK, text);
+
+		drawList->AddText(position, IM_COL32_WHITE, text);
+
+		ImGui::PopFont();
+	}
 
 	uiMainmenu();
 
-	if(CPad::IsKeyJustDown('C')) gUseViewerCam = !gUseViewerCam;
+	if (!gameLoaded)
+		return;
 
-	if(CPad::IsKeyJustDown('T')) showTimeWeatherWindow ^= 1;
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+	ImGui::SetNextWindowPos(viewport->WorkPos);
+	ImGui::SetNextWindowSize(viewport->WorkSize);
+	ImGui::SetNextWindowViewport(viewport->ID);
+
+	ImGuiDockNodeFlags dockspace_flags = 0;
+	ImGuiWindowFlags host_window_flags = 0;
+	host_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
+	host_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+	dockspace_flags |= ImGuiDockNodeFlags_PassthruCentralNode;
+
+	if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
+		host_window_flags |= ImGuiWindowFlags_NoBackground;
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::Begin("MyDockSpace", nil, host_window_flags);
+	ImGui::PopStyleVar(3);
+
+	ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable && 
+		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags, nil)) {
+		if (resetWindowLayout) {
+			ImGui::DockBuilderRemoveNode(dockspace_id);
+			ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+			ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+
+			ImGuiID dock_main_id = dockspace_id;
+			ImGuiID dock_id_right = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.20f, nil, &dock_main_id);
+			ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.20f, nil, &dock_main_id);
+
+			ImGui::DockBuilderDockWindow("Log", dock_id_bottom);
+			ImGui::DockBuilderDockWindow("Ide", dock_id_right);
+			ImGui::DockBuilderDockWindow("Ipl", dock_id_right);
+			ImGui::DockBuilderDockWindow("Selected", dock_id_right);
+			ImGui::FindSettingsHandler("Log");
+
+			showIDEWindow = true;
+			showLogWindow = true;
+			showIPLWindow = true;
+			showSelectedWindow = true;
+
+			ImGui::DockBuilderFinish(dockspace_id);
+
+			resetWindowLayout = false;
+		}
+	}
+	ImGui::End();
+
 	if(showTimeWeatherWindow){
 		ImGui::Begin("Time & Weather", &showTimeWeatherWindow);
 		uiTimeWeather();
 		ImGui::End();
 	}
 
-	if(CPad::IsKeyJustDown('V')) showViewWindow ^= 1;
 	if(showViewWindow){
 		ImGui::Begin("View", &showViewWindow);
 		uiView();
 		ImGui::End();
 	}
 
-	if(CPad::IsKeyJustDown('R')) showRenderingWindow ^= 1;
 	if(showRenderingWindow){
 		ImGui::Begin("Rendering", &showRenderingWindow);
 		uiRendering();
 		ImGui::End();
 	}
 
-	//if(CPad::IsKeyJustDown('I')) showInstanceWindow ^= 1;
-	uiInstWindow();
+	if (gameLoaded) {
+		if (ideObjs.empty())
+			uiUpdateIDEObjList(ideObjs, GetIDEGameFiles()[ide]);
+
+		if (iplObjs.empty())
+			uiUpdateIPLObjList(iplObjs, GetIPLGameFiles()[ipl]);
+	}
+
+	if (showIDEWindow) uiIDEWindow();
+	if (showIPLWindow) uiIPLWindow();
+	if (showSelectedWindow) uiSelectedWindow();
 
 	if(showEditorWindow) uiEditorWindow();
 	if(showHelpWindow) uiHelpWindow();
@@ -972,5 +1065,6 @@ gui(void)
 
 	if(showLogWindow) logwindow.Draw("Log", &showLogWindow);
 
+	uiContextMenu();
 //	uiTest();
 }

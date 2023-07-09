@@ -41,6 +41,7 @@ ObjectInst::CreateRwObject(void)
 void
 ObjectInst::Init(FileObjectInstance *fi)
 {
+	removed = false;
 	m_objectId = fi->objectId;
 	if(fi->area & 0x100) m_isUnimportant = true;
 	if(fi->area & 0x400) m_isUnderWater = true;
@@ -203,11 +204,94 @@ RemoveInstance(ObjectInst* inst)
 {
 	RemoveInstFromSectors(inst);
 	instances.RemoveItem(inst);
-	delete inst;
 }
 
+void
+CopySelectedInstances(void)
+{
+	while (!GetCopyInst().empty()) {
+		GetCopyInst().pop();
+	}
 
+	for (CPtrNode* p = selection.first; p; p = p->next) {
+		ObjectInst* inst = (ObjectInst*)p->item;
 
+		if (inst)
+			GetCopyInst().push(*inst);	
+	}
+}
+
+ObjectInst*
+AddNewObjectInst(GameFile* file, int id) {
+	if (!file || id <= 0)
+		return nil;
+
+	FileObjectInstance fi;
+	fi.position = TheCamera.m_position;
+	fi.position.x += TheCamera.m_at.x * 15.0f;
+	fi.position.y += TheCamera.m_at.y * 15.0f;
+	fi.position.z += TheCamera.m_at.z * 15.0f;
+
+	fi.rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+	fi.objectId = id;
+	fi.area = currentArea;
+	fi.lod = -1;
+
+	float sx(1.0f), sy(1.0f), sz(1.0f);
+
+	ObjectDef* obj = GetObjectDef(id);
+	if (obj == nil) {
+		log("warning: object %d was never defined\n", id);
+		return nil;
+	}
+
+	ObjectInst* inst = AddInstance();
+	inst->Init(&fi);
+	inst->m_scale = { sx, sy, sz };
+	inst->m_prevScale = { sx, sy, sz };
+
+	if (!isSA() && obj->m_isBigBuilding)
+		inst->SetupBigBuilding();
+
+	inst->m_file = file;
+	strcpy(inst->m_modelName, obj->m_name);
+
+	InsertInstIntoSectors(inst);
+	inst->m_file->m_altered = true;
+
+	return inst;
+}
+
+void 
+PasteCopiedInstances(void)
+{
+	int size = GetCopyInst().size();
+	for (int i = 0; i < size; i++) {
+		ObjectInst* inst = AddNewObjectInst(GetIPLGameFiles()[guiGetIpl()], GetCopyInst().top().m_objectId);
+		if (inst) {
+			inst->Select();
+		}
+		else {
+			log("error pasting object, retry \n");
+		}
+	}
+}
+
+void
+DeleteSelectedInstances(void) 
+{
+	for (CPtrNode* p = selection.first; p; p = p->next) {
+		ObjectInst* inst = (ObjectInst*)p->item;
+
+		if (inst) {
+			GetInstHistory().push_back(inst);
+			inst->Deselect();
+			inst->removed = true;
+			inst->m_file->m_altered = true;
+			//RemoveInstance(inst);
+		}
+	}
+}
 
 
 

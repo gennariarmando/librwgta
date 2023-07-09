@@ -174,7 +174,7 @@ Init(void)
 {
 	sk::globals.windowtitle = "Euryopa";
 	sk::globals.width = 1280;
-	sk::globals.height = 800;
+	sk::globals.height = 720;
 	sk::globals.quit = 0;
 }
 
@@ -205,6 +205,7 @@ DefinedState(void)
 	c = RWRGBAINT(fog.red, fog.green, fog.blue, 255);
 	SetRenderState(rw::FOGCOLOR, c);
 	SetRenderState(rw::CULLMODE, rw::CULLBACK);
+	SetRenderState(rw::SCISSORENABLE, 0);
 }
 
 // Simple function to convert a raster to the current platform.
@@ -289,13 +290,20 @@ InitRW(void)
 	Scene.world->addCamera(TheCamera.m_rwcam_viewer);
 
 	ImGui_ImplRW_Init();
-	ImGui::StyleColorsClassic();
 
 	RenderInit();
 
 	return true;
 }
 
+bool
+ShutdownRW(void)
+{
+	guiSaveLayout();
+	ImGui_ImplRW_Shutdown();
+
+	return true;
+}
 
 sk::EventStatus
 AppEventHandler(sk::Event e, void *param)
@@ -304,36 +312,40 @@ AppEventHandler(sk::Event e, void *param)
 	Rect *r;
 	MouseState *ms;
 
-	ImGuiEventHandler(e, param);
+	ImGuiIO* io = ImGui::GetCurrentContext() ? &ImGui::GetIO() : nil;
 
-	ImGuiIO &io = ImGui::GetIO();
+	if (io)
+		ImGuiEventHandler(e, param);
+
 //	if(io.WantCaptureMouse || ImGuizmo::IsOver())
 //		CPad::tempMouseState.btns = 0;
 
 	switch(e){
 	case INITIALIZE:
-//*
+/*
 		AllocConsole();
 		freopen("CONIN$", "r", stdin);
 		freopen("CONOUT$", "w", stdout);
 		freopen("CONOUT$", "w", stderr);
-//*/
+*/
 		Init();
 		plAttachInput();
 		return EVENTPROCESSED;
 	case RWINITIALIZE:
 		return ::InitRW() ? EVENTPROCESSED : EVENTERROR;
+	case RWTERMINATE:
+		return ::ShutdownRW() ? EVENTPROCESSED : EVENTERROR;
 	case PLUGINATTACH:
 		return attachPlugins() ? EVENTPROCESSED : EVENTERROR;
 	case KEYDOWN:
-		if(!io.WantCaptureKeyboard && !io.WantTextInput && !ImGuizmo::IsOver())
+		if((io && !io->WantCaptureKeyboard && !io->WantTextInput) && !ImGuizmo::IsOver())
 			CPad::tempKeystates[*(int*)param] = 1;
 		return EVENTPROCESSED;
 	case KEYUP:
 		CPad::tempKeystates[*(int*)param] = 0;
 		return EVENTPROCESSED;
 	case MOUSEBTN:
-		if(!io.WantCaptureMouse && !ImGuizmo::IsOver()){
+		if((io && !io->WantCaptureMouse) && !ImGuizmo::IsOver()){
 			ms = (MouseState*)param;
 			CPad::tempMouseState.btns = ms->buttons;
 		}else

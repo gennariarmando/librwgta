@@ -31,6 +31,9 @@ enum Visibility
 static void
 AddToRenderList(ObjectInst *inst, float dist)
 {
+	if (inst->removed)
+		return;
+
 	ObjectDef *obj = GetObjectDef(inst->m_objectId);
 	assert(inst->m_rwObject);
 

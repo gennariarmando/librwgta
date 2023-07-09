@@ -46,6 +46,9 @@ CCamera::Process(void)
 	}
 
 	// Keyboard
+	if (CPad::IsKeyDown(KEY_LCTRL))
+		return;
+
 	static float speed = 0.0f;
 	if(CPad::IsKeyDown('W'))
 		speed += 0.1f;

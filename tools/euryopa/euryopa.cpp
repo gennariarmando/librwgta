@@ -53,6 +53,20 @@ float gWetRoadEffect;
 // Neo stuff
 float gNeoLightMapStrength = 0.5f;
 
+InstHistory instHistory = {};
+InstVector<ObjectInst> copyInst = {};
+
+InstHistory&
+GetInstHistory() 
+{
+	return instHistory;
+}
+
+InstVector<ObjectInst>&
+GetCopyInst() {
+	return copyInst;
+}
+
 bool
 IsHourInRange(int h1, int h2)
 {
@@ -375,17 +389,17 @@ handleTool(void)
 		int32 c = gta::GetColourCode(CPad::newMouseState.x, CPad::newMouseState.y);
 		ObjectInst *inst = GetInstanceByID(c);
 		if(inst){
-			if(CPad::IsShiftDown())
-				inst->Select();
-			else if(CPad::IsAltDown())
-				inst->Deselect();
-			else if(CPad::IsCtrlDown()){
-				if(inst->m_selected) inst->Deselect();
-				else inst->Select();
-			}else{
+			//if(CPad::IsShiftDown())
+			//	inst->Select();
+			//else if(CPad::IsAltDown())
+			//	inst->Deselect();
+			//else if(CPad::IsCtrlDown()){
+			//	if(inst->m_selected) inst->Deselect();
+			//	else inst->Select();
+			//}else{
 				ClearSelection();
 				inst->Select();
-			}
+			//}
 		}else
 			ClearSelection();
 	}
@@ -405,16 +419,12 @@ void
 SaveGame(void)
 {
 	FileLoader::SaveDataFiles();
+	guiSaveLayout();
 }
 
 void
 LoadGame(void)
 {
-// for debugging...
-	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto 3");
-	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto Vice City");
-	//SetCurrentDirectory("D:/Program Files/Games/Steam Library/steamapps/common/Grand Theft Auto San Andreas");
-
 	FindVersion();
 	switch(gameversion){
 	case GAME_III: debug("found III!\n"); break;
@@ -501,22 +511,29 @@ LoadGame(void)
 		if(obj) obj->m_isHidden = true;
 	}
 
+	ImFileHandle f;
+	if (f = ImFileOpen("euryopa.ini", "rb")) {
+		ImFileClose(f);
+		guiLoadLayout();
+	}
+	else {
+		guiResetLayout();
+	}
+
 	gameLoaded = true;
 }
 
 void
-dogizmo(void)
+dogizmo()
 {
-	rw::Camera *cam;
+	rw::Camera* cam;
 	rw::Matrix tmp, view;
 	rw::RawMatrix gizview;
-	float *fview, *fproj, *fobj;
+	float* fview, * fproj, * fobj;
 	static rw::RawMatrix gizobj;
 	static bool first = true;
 
-	ObjectInst* inst = (ObjectInst*)selection.first->item;
-
-	if(first){
+	if (first) {
 		tmp.setIdentity();
 		convMatrix(&gizobj, &tmp);
 		first = false;
@@ -529,16 +546,37 @@ dogizmo(void)
 	fproj = (float*)&cam->devProj;
 	fobj = (float*)&gizobj;
 
-	ImGuiIO &io = ImGui::GetIO();
+	ImGuiIO& io = ImGui::GetIO();
 	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
-	if (!ImGuizmo::Manipulate(fview, fproj, ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, fobj, nil, nil))
-		gizobj.pos = inst->m_translation;
-	else {
+
+	static bool once = false;
+
+	if (!selection.first)
+		return;
+
+	ObjectInst* inst = (ObjectInst*)selection.first->item;
+	if (!inst)
+		return;
+
+	if (ImGuizmo::Manipulate(fview, fproj, ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, fobj, nil, nil)) {
+		if (!once) {
+			GetInstHistory().push_back(inst);
+			once = true;
+		}
+
 		inst->m_translation = gizobj.pos;
 		inst->m_file->m_altered = true;
+		inst->UpdateMatrix();
 	}
-//	ImGuizmo::DrawCube(fview, fproj, fobj);
-//	ImGuizmo::DrawCube((float*)&gizview, (float*)&cam->devProj, (float*)&gizobj);
+	else {
+		gizobj.pos = inst->m_translation;
+		once = false;
+
+		//if (once && !ImGuizmo::IsUsing()) {
+		//	GetInstHistory().push_back(inst);
+		//	once = false;
+		//}
+	}
 }
 
 static uint64 frameCounter;
@@ -561,7 +599,7 @@ updateFPS(void)
 void
 Draw(void)
 {
-	static rw::RGBA clearcol = { 0x80, 0x80, 0x80, 0xFF };
+	static rw::RGBA clearcol = { 0, 0, 0, 0xFF };
 
 	CPad *pad = CPad::GetPad(0);
 	if(pad->NewState.start && pad->NewState.select){
@@ -610,27 +648,39 @@ Draw(void)
 		LoadAllRequestedObjects();
 		BuildRenderList();
 
-
 		// Has to be called for highlighting some objects
 		// but also can mess with timecycle mid frame :/
+		dogizmo();
 
-		if (selection.first){
-			dogizmo();
-
-			if (CPad::IsKeyJustDown(KEY_DEL)) {
-				ObjectInst* inst = (ObjectInst*)selection.first->item;
-
-				if (inst) {
-					inst->Deselect();
-					inst->m_file->m_altered = true;
-					RemoveInstance(inst);
-				}
+		if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('Z')) {
+			ClearSelection();
+			ObjectInst* inst = GetInstHistory().undo();
+			if (inst) {
+				inst->Select();
+				inst->UpdateMatrix();
 			}
-
+		}
+		else if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('Y')) {
+			ClearSelection();
+			ObjectInst* inst = GetInstHistory().redo();
+			if (inst) {
+				inst->Select();
+				inst->UpdateMatrix();
+			}
+		}
+		else if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('C')) {
+			CopySelectedInstances();
+		}
+		else if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('V')) {
+			PasteCopiedInstances();
+		}
+		else if (CPad::IsKeyJustDown(KEY_DEL)) {
+			DeleteSelectedInstances();
 		}
 
 		handleTool();
 	}
+
 	gui();
 
 	DefinedState();
@@ -677,7 +727,13 @@ Draw(void)
 
 	SetRenderState(rw::CULLMODE, rw::CULLNONE);
 
-	TheCamera.DrawTarget();
+	SetRenderState(rw::ZTESTENABLE, 0);
+
+	if (gameLoaded)
+		TheCamera.DrawTarget();
+
+	SetRenderState(rw::ZTESTENABLE, 1);
+
 	if(gRenderCollision)
 		RenderEverythingCollisions();
 	if(gRenderTimecycleBoxes)
@@ -699,11 +755,12 @@ Draw(void)
 
 	Scene.camera->endUpdate();
 	Scene.camera->showRaster(rw::Raster::FLIPWAITVSYNCH);
+
 	frameCounter++;
 }
 
 void
 Idle(void)
 {
-	Draw();
+		Draw();
 }
