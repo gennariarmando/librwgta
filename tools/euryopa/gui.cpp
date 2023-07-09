@@ -120,14 +120,19 @@ uiMainmenu(void)
 
 		if (gameLoaded){
 			if (ImGui::BeginMenu("Edit")) {
+				if (ImGui::MenuItem("Undo", "CTRL + Z", false, !GetInstHistory().m_undo.empty())) { UndoInstance(); }
+				if (ImGui::MenuItem("Redo", "CTRL + Y", false, !GetInstHistory().m_redo.empty())) { RedoInstance(); }
+				ImGui::Separator();
 				if (ImGui::MenuItem("Add", "CTRL + A")) {}
-				if (ImGui::MenuItem("Copy", "CTRL + C", (bool)0, selection.first)) { CopySelectedInstances(); }
-				if (ImGui::MenuItem("Paste", "CTRL + V", (bool)0, !GetCopyInst().empty())) { PasteCopiedInstances(); }
-				if (ImGui::MenuItem("Delete", "DEL", (bool)0, false)) { DeleteSelectedInstances(); }
+				ImGui::Separator();
+				if (ImGui::MenuItem("Copy", "CTRL + C", false, selection.first)) { CopySelectedInstances(); }
+				if (ImGui::MenuItem("Paste", "CTRL + V", false, !GetCopyInst().empty())) { PasteCopiedInstances(); }
+				if (ImGui::MenuItem("Delete", "DEL", false, selection.first)) { DeleteSelectedInstances(); }
 				ImGui::EndMenu();
 			}
 			if(ImGui::BeginMenu("Window")){
 				if (ImGui::MenuItem("Reset Default Layout")) resetWindowLayout = true;
+				ImGui::Separator();
 				ImGui::MenuItem("Time & Weather", nil, &showTimeWeatherWindow);
 				ImGui::MenuItem("View", nil, &showViewWindow);
 				ImGui::MenuItem("Rendering", nil, &showRenderingWindow);
@@ -860,9 +865,10 @@ uiContextMenu(void)
 
 	if (ImGui::BeginPopup("Main_Context_Menu")) {
 		if (ImGui::MenuItem("Add", "CTRL + A")) {}
-		if (ImGui::MenuItem("Copy", "CTRL + C", (bool)0, selection.first)) { CopySelectedInstances(); }
-		if (ImGui::MenuItem("Paste", "CTRL + V", (bool)0, !GetCopyInst().empty())) { PasteCopiedInstances(); }
-		if (ImGui::MenuItem("Delete", "DEL", (bool)0, false)) { DeleteSelectedInstances(); }
+		ImGui::Separator();
+		if (ImGui::MenuItem("Copy", "CTRL + C", false, selection.first)) { CopySelectedInstances(); }
+		if (ImGui::MenuItem("Paste", "CTRL + V", false, !GetCopyInst().empty())) { PasteCopiedInstances(); }
+		if (ImGui::MenuItem("Delete", "DEL", false, selection.first)) { DeleteSelectedInstances(); }
 		ImGui::EndPopup();
 	}
 }

@@ -468,6 +468,8 @@ extern CPtrList selection;
 ObjectInst *GetInstanceByID(int32 id);
 ObjectInst *AddInstance(void);
 void RemoveInstance(ObjectInst* inst);
+void UndoInstance(void);
+void RedoInstance(void);
 void CopySelectedInstances(void);
 void ClearSelection(void);
 ObjectInst* AddNewObjectInst(GameFile* file, int id);
@@ -647,10 +649,10 @@ private:
 		ObjectInst* ptr;
 	};
 
+public:
 	InstVector<History> m_undo;
 	InstVector<History> m_redo;
 
-public:
 	InstHistory() = default;
 
 	static ObjectInst copy(ObjectInst* inst)
@@ -695,23 +697,6 @@ public:
 			m_undo.pop();
 
 		//log("push_back %s \n", ptr->m_modelName);
-	}
-
-	ObjectInst* get_undo_back()
-	{
-		if (m_undo.empty())
-			return nil;
-
-		return m_undo.top().ptr;
-	}
-
-
-	ObjectInst* get_redo_back() 
-	{
-		if (m_redo.empty())
-			return nil;
-
-		return m_redo.top().ptr;
 	}
 
 	ObjectInst* undo()

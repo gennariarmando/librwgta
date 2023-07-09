@@ -207,6 +207,28 @@ RemoveInstance(ObjectInst* inst)
 }
 
 void
+UndoInstance(void)
+{
+	ClearSelection();
+	ObjectInst* inst = GetInstHistory().undo();
+	if (inst) {
+		inst->Select();
+		inst->UpdateMatrix();
+	}
+}
+
+void
+RedoInstance(void)
+{
+	ClearSelection();
+	ObjectInst* inst = GetInstHistory().redo();
+	if (inst) {
+		inst->Select();
+		inst->UpdateMatrix();
+	}
+}
+
+void
 CopySelectedInstances(void)
 {
 	while (!GetCopyInst().empty()) {

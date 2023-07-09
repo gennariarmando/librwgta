@@ -653,20 +653,10 @@ Draw(void)
 		dogizmo();
 
 		if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('Z')) {
-			ClearSelection();
-			ObjectInst* inst = GetInstHistory().undo();
-			if (inst) {
-				inst->Select();
-				inst->UpdateMatrix();
-			}
+			UndoInstance();
 		}
 		else if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('Y')) {
-			ClearSelection();
-			ObjectInst* inst = GetInstHistory().redo();
-			if (inst) {
-				inst->Select();
-				inst->UpdateMatrix();
-			}
+			RedoInstance();
 		}
 		else if (CPad::IsKeyDown(KEY_LCTRL) && CPad::IsKeyJustDown('C')) {
 			CopySelectedInstances();
