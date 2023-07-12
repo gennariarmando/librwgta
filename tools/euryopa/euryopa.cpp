@@ -381,6 +381,8 @@ RenderEverythingColourCoded(void)
 void
 handleTool(void)
 {
+	rw::Rect r = guiViewportRect();
+	rw::SetViewport(r);
 	// select
 	if(CPad::IsMButtonClicked(1)){
 		static rw::RGBA black = { 0, 0, 0, 0xFF };
@@ -403,6 +405,7 @@ handleTool(void)
 		}else
 			ClearSelection();
 	}
+	rw::SetViewport({});
 }
 
 rw::Texture *(*originalFindCB)(const char *name);
@@ -547,7 +550,8 @@ dogizmo()
 	fobj = (float*)&gizobj;
 
 	ImGuiIO& io = ImGui::GetIO();
-	ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+	rw::Rect r = guiViewportRect();
+	ImGuizmo::SetRect(r.x, r.y, r.w, r.h);
 
 	static bool once = false;
 
@@ -599,7 +603,7 @@ updateFPS(void)
 void
 Draw(void)
 {
-	static rw::RGBA clearcol = { 0, 0, 0, 0xFF };
+	static rw::RGBA clearcol = { 0x32, 0x32, 0x32, 0xFF };
 
 	CPad *pad = CPad::GetPad(0);
 	if(pad->NewState.start && pad->NewState.select){
@@ -671,8 +675,6 @@ Draw(void)
 		handleTool();
 	}
 
-	gui();
-
 	DefinedState();
 	Scene.camera->clear(&clearcol, rw::Camera::CLEARIMAGE|rw::Camera::CLEARZ);
 
@@ -738,6 +740,11 @@ Draw(void)
 	rw::SetRenderState(rw::ALPHATESTFUNC, rw::ALPHAALWAYS);	// don't mess up GUI
 	// This fucks up the z buffer, but what else can we do?
 	RenderDebugLines();
+
+	guiMakeViewportBuffer();
+
+	gui();
+	
 	ImGui::EndFrame();
 	ImGui::Render();
 

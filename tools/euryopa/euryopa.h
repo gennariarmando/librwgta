@@ -623,6 +623,8 @@ namespace Clouds
 // GUI
 //
 
+void guiMakeViewportBuffer();
+rw::Rect guiViewportRect();
 int guiGetIde(void);
 int guiGetIpl(void);
 void guiSaveLayout(void);

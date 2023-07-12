@@ -6,6 +6,7 @@ static bool showEditorWindow;
 static bool showIDEWindow;
 static bool showIPLWindow;
 static bool showSelectedWindow;
+static bool showViewportWindow;
 
 static bool showLogWindow;
 static bool showHelpWindow;
@@ -23,6 +24,38 @@ static int ideObjectID = 0;
 static int ipl = 0;
 static ImVector<ObjectInst*> iplObjs = {};
 static int iplObjectID = 0;
+
+static rw::Texture* vpBufferTex = nil;
+static rw::Raster* vpBuffer = nil;
+static rw::Rect vpRect = {};
+
+rw::Rect
+guiViewportRect() 
+{
+	return vpRect;
+}
+
+void
+guiMakeViewportBuffer()
+{
+	rw::Raster* cam = TheCamera.m_rwcam->frameBuffer;
+
+	if (vpBuffer == nil ||
+		vpBuffer->width != cam->width ||
+		vpBuffer->height != cam->height) {
+		if (vpBuffer)
+			vpBuffer->destroy();
+		vpBuffer = rw::Raster::create(cam->width, cam->height, 32, rw::Raster::C8888 | rw::Raster::CAMERATEXTURE);
+		if (vpBufferTex == nil)
+			vpBufferTex = rw::Texture::create(vpBuffer);
+		else
+			vpBufferTex->raster = vpBuffer;
+	}
+
+	rw::Raster::pushContext(vpBuffer);
+	cam->renderFast(0, 0);
+	rw::Raster::popContext();
+}
 
 int
 guiGetIde(void)
@@ -139,6 +172,7 @@ uiMainmenu(void)
 				ImGui::MenuItem("IDE", nil, &showIDEWindow);
 				ImGui::MenuItem("IPL", nil, &showIPLWindow);
 				ImGui::MenuItem("Selected", nil, &showSelectedWindow);
+				ImGui::MenuItem("Viewport", nil, &showViewportWindow);
 
 				ImGui::MenuItem("Editor ", nil, &showEditorWindow);
 				ImGui::MenuItem("Log ", nil, &showLogWindow);
@@ -793,6 +827,11 @@ uiIPLWindow(void)
 					obj->Select();
 					iplObjectID = i;
 				}
+
+				if (ImGui::IsItemHovered()) {
+					if (ImGui::IsMouseDoubleClicked(0))
+						obj->JumpTo();
+				}
 			}
 
 			ImGui::EndListBox();
@@ -832,6 +871,32 @@ uiSelectedWindow(void)
 	}
 
 	ImGui::End();
+}
+
+static void
+uiViewportWindow(void)
+{
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::Begin("Viewport", &showViewportWindow);
+
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImVec2 size = ImGui::GetContentRegionAvail();
+	vpRect.x = pos.x;
+	vpRect.y = pos.y;
+	vpRect.w = size.x;
+	vpRect.h = size.y;
+
+	if (vpBufferTex) {
+		ImGui::Image((void*)vpBufferTex, size);
+
+		if (ImGui::IsItemHovered() || ImGui::IsItemFocused()) {
+			ImGui::CaptureKeyboardFromApp(false);
+			ImGui::CaptureMouseFromApp(false);
+		}
+	}
+
+	ImGui::End();
+	ImGui::PopStyleVar();
 }
 
 static void
@@ -894,6 +959,7 @@ guiSaveLayout(void)
 	checkWindowBeforeSave(showIDEWindow, "Ide");
 	checkWindowBeforeSave(showIPLWindow, "Ipl");
 	checkWindowBeforeSave(showSelectedWindow, "Selected");
+	checkWindowBeforeSave(showViewportWindow, "Viewport");
 	checkWindowBeforeSave(showLogWindow, "Log");
 
 	checkWindowBeforeSave(showTimeWeatherWindow, "Time & Weather");
@@ -920,6 +986,7 @@ guiLoadLayout(void)
 	checkWindowAfterLoad(showIDEWindow, "Ide");
 	checkWindowAfterLoad(showIPLWindow, "Ipl");
 	checkWindowAfterLoad(showSelectedWindow, "Selected");
+	checkWindowAfterLoad(showViewportWindow, "Viewport");
 	checkWindowAfterLoad(showLogWindow, "Log");
 
 	checkWindowAfterLoad(showTimeWeatherWindow, "Time & Weather");
@@ -988,49 +1055,52 @@ gui(void)
 	ImGuiWindowFlags host_window_flags = 0;
 	host_window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
 	host_window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-	dockspace_flags |= ImGuiDockNodeFlags_PassthruCentralNode;
+	//dockspace_flags |= ImGuiDockNodeFlags_PassthruCentralNode;
 
-	if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
-		host_window_flags |= ImGuiWindowFlags_NoBackground;
+	//if (dockspace_flags & ImGuiDockNodeFlags_PassthruCentralNode)
+	//	host_window_flags |= ImGuiWindowFlags_NoBackground;
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	ImGui::Begin("MyDockSpace", nil, host_window_flags);
-	ImGui::PopStyleVar(3);
+	if (ImGui::Begin("MyDockSpace", nil, host_window_flags)) {
+		ImGui::PopStyleVar(3);
 
-	ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+		ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
 
-	ImGuiIO& io = ImGui::GetIO();
+		ImGuiIO& io = ImGui::GetIO();
 
-	if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable && 
-		ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags, nil)) {
-		if (resetWindowLayout) {
-			ImGui::DockBuilderRemoveNode(dockspace_id);
-			ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
-			ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
+		if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable &&
+			ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags, nil)) {
+			if (resetWindowLayout) {
+				ImGui::DockBuilderRemoveNode(dockspace_id);
+				ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+				ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->Size);
 
-			ImGuiID dock_main_id = dockspace_id;
-			ImGuiID dock_id_right = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.20f, nil, &dock_main_id);
-			ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.20f, nil, &dock_main_id);
+				ImGuiID dock_main_id = dockspace_id;
+				ImGuiID dock_id_right = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.20f, nil, &dock_main_id);
+				ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.20f, nil, &dock_main_id);
 
-			ImGui::DockBuilderDockWindow("Log", dock_id_bottom);
-			ImGui::DockBuilderDockWindow("Ide", dock_id_right);
-			ImGui::DockBuilderDockWindow("Ipl", dock_id_right);
-			ImGui::DockBuilderDockWindow("Selected", dock_id_right);
-			ImGui::FindSettingsHandler("Log");
+				ImGui::DockBuilderDockWindow("Viewport", dock_main_id);
+				ImGui::DockBuilderDockWindow("Log", dock_id_bottom);
+				ImGui::DockBuilderDockWindow("Ide", dock_id_right);
+				ImGui::DockBuilderDockWindow("Ipl", dock_id_right);
+				ImGui::DockBuilderDockWindow("Selected", dock_id_right);
+				ImGui::FindSettingsHandler("Log");
 
-			showIDEWindow = true;
-			showLogWindow = true;
-			showIPLWindow = true;
-			showSelectedWindow = true;
+				showIDEWindow = true;
+				showLogWindow = true;
+				showIPLWindow = true;
+				showSelectedWindow = true;
+				showViewportWindow = true;
 
-			ImGui::DockBuilderFinish(dockspace_id);
+				ImGui::DockBuilderFinish(dockspace_id);
 
-			resetWindowLayout = false;
+				resetWindowLayout = false;
+			}
 		}
+		ImGui::End();
 	}
-	ImGui::End();
 
 	if(showTimeWeatherWindow){
 		ImGui::Begin("Time & Weather", &showTimeWeatherWindow);
@@ -1061,6 +1131,7 @@ gui(void)
 	if (showIDEWindow) uiIDEWindow();
 	if (showIPLWindow) uiIPLWindow();
 	if (showSelectedWindow) uiSelectedWindow();
+	if (showViewportWindow) uiViewportWindow();
 
 	if(showEditorWindow) uiEditorWindow();
 	if(showHelpWindow) uiHelpWindow();

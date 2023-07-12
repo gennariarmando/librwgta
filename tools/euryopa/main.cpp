@@ -299,7 +299,8 @@ InitRW(void)
 bool
 ShutdownRW(void)
 {
-	guiSaveLayout();
+	if (gameLoaded)
+		guiSaveLayout();
 	ImGui_ImplRW_Shutdown();
 
 	return true;
